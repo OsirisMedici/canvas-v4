@@ -26,6 +26,11 @@ type ChatSession = {
 type NavigationTarget = { type: "board" | "folder"; id: string };
 type ContextMenuState = NavigationTarget & { x: number; y: number };
 type MenuPosition = { left: number; top: number };
+type NavigationDialog =
+  | { kind: "create-board"; folderId: string | null; value: string }
+  | { kind: "create-folder"; parentId: string | null; value: string }
+  | { kind: "rename"; target: NavigationTarget; value: string }
+  | { kind: "move"; target: NavigationTarget; destinationId: string };
 type TrashEntry = { id: string; name?: string; title?: string; source_type?: string; board_name?: string; folder_name?: string; item_count?: number; board_count?: number; trashed_at: string };
 type TrashData = { folders: TrashEntry[]; boards: TrashEntry[]; items: TrashEntry[] };
 
@@ -68,6 +73,8 @@ export function VaultApp() {
   const [folderTreeLoaded, setFolderTreeLoaded] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [createMenu, setCreateMenu] = useState<MenuPosition | null>(null);
+  const [navigationDialog, setNavigationDialog] = useState<NavigationDialog | null>(null);
+  const [dialogBusy, setDialogBusy] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [trash, setTrash] = useState<TrashData>({ folders: [], boards: [], items: [] });
   const [currentBoardId, setCurrentBoardId] = useState(DEFAULT_BOARD_ID);
@@ -180,7 +187,7 @@ export function VaultApp() {
         searchRef.current?.select();
         return;
       }
-      if (event.key === "Escape") closeMenus();
+      if (event.key === "Escape") { closeMenus(); setNavigationDialog(null); }
     }
     window.addEventListener("click", closeMenus);
     window.addEventListener("keydown", handleKeyboard);
@@ -266,25 +273,23 @@ export function VaultApp() {
     return () => window.removeEventListener("paste", onPaste);
   }, [ingest, saveText, uploadFiles]);
 
-  async function createNewBoard(folderId: string | null = null) {
-    const name = window.prompt("Name this board");
-    if (!name?.trim()) return;
+  async function createNewBoard(name: string, folderId: string | null = null) {
     const response = await fetch("/api/boards", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, folderId }) });
     const data = await response.json();
-    if (!response.ok) return notify(data.error || "Could not create the board.", true);
+    if (!response.ok) throw new Error(data.error || "Could not create the board.");
     if (folderId) setExpandedFolders((current) => new Set(current).add(folderId));
     await Promise.all([loadBoards(), loadFolders()]);
     setCurrentBoardId(data.board.id);
+    notify(`Board “${data.board.name}” created.`);
   }
 
-  async function createNewFolder(parentId: string | null = null) {
-    const name = window.prompt(parentId ? "Name this subfolder" : "Name this folder");
-    if (!name?.trim()) return;
+  async function createNewFolder(name: string, parentId: string | null = null) {
     const response = await fetch("/api/folders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, parentId }) });
     const data = await response.json();
-    if (!response.ok) return notify(data.error || "Could not create the folder.", true);
+    if (!response.ok) throw new Error(data.error || "Could not create the folder.");
     if (parentId) setExpandedFolders((current) => new Set(current).add(parentId));
     await loadFolders();
+    notify(`Folder “${data.folder.name}” created.`);
   }
 
   async function patchNavigation(target: NavigationTarget, body: Record<string, unknown>) {
@@ -296,23 +301,35 @@ export function VaultApp() {
     await Promise.all([loadBoards(), loadFolders()]);
   }
 
-  async function renameNavigation(target: NavigationTarget) {
-    const currentName = target.type === "board" ? boards.find((board) => board.id === target.id)?.name : folders.find((folder) => folder.id === target.id)?.name;
-    const name = window.prompt(`Rename ${target.type}`, currentName || "");
-    if (!name?.trim() || name.trim() === currentName) return;
-    try { await patchNavigation(target, { name }); } catch (error) { notify(error instanceof Error ? error.message : "Rename failed.", true); }
+  async function renameNavigation(target: NavigationTarget, name: string) {
+    await patchNavigation(target, { name });
+    notify(`${target.type === "board" ? "Board" : "Folder"} renamed.`);
   }
 
-  async function moveNavigation(target: NavigationTarget) {
-    const choices = folders.filter((folder) => folder.id !== target.id).map((folder) => folder.name).join(", ");
-    const requested = window.prompt(`Move to which folder? Leave blank for the top level.\n\nFolders: ${choices || "No folders yet"}`);
-    if (requested === null) return;
-    const destination = requested.trim() ? folders.find((folder) => folder.name.toLowerCase() === requested.trim().toLowerCase()) : null;
-    if (requested.trim() && !destination) return notify("No folder has that exact name.", true);
+  async function moveNavigation(target: NavigationTarget, destinationId: string) {
+    const destination = folders.find((folder) => folder.id === destinationId) || null;
+    await patchNavigation(target, target.type === "board" ? { folderId: destination?.id || null } : { parentId: destination?.id || null });
+    if (destination) setExpandedFolders((current) => new Set(current).add(destination.id));
+    notify(`${target.type === "board" ? "Board" : "Folder"} moved.`);
+  }
+
+  async function submitNavigationDialog(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const dialog = navigationDialog;
+    if (!dialog || dialogBusy) return;
+    if (dialog.kind !== "move" && !dialog.value.trim()) return;
+    setDialogBusy(true);
     try {
-      await patchNavigation(target, target.type === "board" ? { folderId: destination?.id || null } : { parentId: destination?.id || null });
-      if (destination) setExpandedFolders((current) => new Set(current).add(destination.id));
-    } catch (error) { notify(error instanceof Error ? error.message : "Move failed.", true); }
+      if (dialog.kind === "create-board") await createNewBoard(dialog.value.trim(), dialog.folderId);
+      if (dialog.kind === "create-folder") await createNewFolder(dialog.value.trim(), dialog.parentId);
+      if (dialog.kind === "rename") await renameNavigation(dialog.target, dialog.value.trim());
+      if (dialog.kind === "move") await moveNavigation(dialog.target, dialog.destinationId);
+      setNavigationDialog(null);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Could not update the library.", true);
+    } finally {
+      setDialogBusy(false);
+    }
   }
 
   async function trashNavigation(target: NavigationTarget) {
@@ -507,6 +524,8 @@ export function VaultApp() {
   }
 
   const scopeItems = chatScopeIds.map((id) => items.find((item) => item.id === id)).filter(Boolean) as ContentItem[];
+  const navigationDialogTitle = navigationDialog?.kind === "create-board" ? "Create a new board" : navigationDialog?.kind === "create-folder" ? "Create a new folder" : navigationDialog?.kind === "rename" ? `Rename ${navigationDialog.target.type}` : "Move to a folder";
+  const navigationDialogAction = navigationDialog?.kind === "rename" ? "Rename" : navigationDialog?.kind === "move" ? "Move" : "Create";
 
   function boardRow(board: Board, depth: number) {
     return <div key={board.id} className={`tree-row board-tree-row ${currentBoardId === board.id ? "active" : ""}`} style={{ "--tree-depth": depth } as React.CSSProperties} onContextMenu={(event) => openContextMenu(event, { type: "board", id: board.id })}>
@@ -629,15 +648,22 @@ export function VaultApp() {
 
       {selectedIds.size > 0 && panelMode !== "chat" && <div className="selection-bar"><span>{selectedIds.size} selected</span><button onClick={() => startChat([...selectedIds])}><MessageSquare size={14} /> Chat</button><button onClick={() => void deleteSelection()}><Trash2 size={14} /> Delete</button><button className="clear" onClick={() => setSelectedIds(new Set())}><X size={14} /></button></div>}
       {createMenu && <div className="navigation-menu create-navigation-menu" style={createMenu} onClick={(event) => event.stopPropagation()}>
-        <button onClick={() => { setCreateMenu(null); void createNewBoard(); }}><Grid2X2 size={14} />New board</button>
-        <button onClick={() => { setCreateMenu(null); void createNewFolder(); }}><FolderPlus size={14} />New folder</button>
+        <button onClick={() => { setCreateMenu(null); setNavigationDialog({ kind: "create-board", folderId: null, value: "" }); }}><Grid2X2 size={14} />New board</button>
+        <button onClick={() => { setCreateMenu(null); setNavigationDialog({ kind: "create-folder", parentId: null, value: "" }); }}><FolderPlus size={14} />New folder</button>
       </div>}
       {contextMenu && <div className="navigation-menu context-navigation-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(event) => event.stopPropagation()}>
-        {contextMenu.type === "folder" && <><button onClick={() => { setContextMenu(null); void createNewBoard(contextMenu.id); }}><Grid2X2 size={14} />New board here</button><button onClick={() => { setContextMenu(null); void createNewFolder(contextMenu.id); }}><FolderPlus size={14} />New subfolder</button><span className="menu-separator" /></>}
-        <button onClick={() => { const target = contextMenu; setContextMenu(null); void renameNavigation(target); }}><Pencil size={14} />Rename</button>
-        <button onClick={() => { const target = contextMenu; setContextMenu(null); void moveNavigation(target); }}><FolderOpen size={14} />Move to folder…</button>
+        {contextMenu.type === "folder" && <><button onClick={() => { const folderId = contextMenu.id; setContextMenu(null); setNavigationDialog({ kind: "create-board", folderId, value: "" }); }}><Grid2X2 size={14} />New board here</button><button onClick={() => { const parentId = contextMenu.id; setContextMenu(null); setNavigationDialog({ kind: "create-folder", parentId, value: "" }); }}><FolderPlus size={14} />New subfolder</button><span className="menu-separator" /></>}
+        <button onClick={() => { const target = contextMenu; const value = target.type === "board" ? boards.find((board) => board.id === target.id)?.name || "" : folders.find((folder) => folder.id === target.id)?.name || ""; setContextMenu(null); setNavigationDialog({ kind: "rename", target, value }); }}><Pencil size={14} />Rename</button>
+        <button onClick={() => { const target = contextMenu; const destinationId = target.type === "board" ? boards.find((board) => board.id === target.id)?.folder_id || "" : folders.find((folder) => folder.id === target.id)?.parent_id || ""; setContextMenu(null); setNavigationDialog({ kind: "move", target, destinationId }); }}><FolderOpen size={14} />Move to folder…</button>
         <span className="menu-separator" />
         <button className="danger" onClick={() => { const target = contextMenu; setContextMenu(null); void trashNavigation(target); }}><Trash2 size={14} />Move to Trash</button>
+      </div>}
+      {navigationDialog && <div className="navigation-dialog-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target && !dialogBusy) setNavigationDialog(null); }}>
+        <form className="navigation-dialog" onSubmit={submitNavigationDialog}>
+          <div className="navigation-dialog-heading"><div><span>Library</span><h2>{navigationDialogTitle}</h2></div><button type="button" aria-label="Close" onClick={() => setNavigationDialog(null)} disabled={dialogBusy}><X size={16} /></button></div>
+          {navigationDialog.kind === "move" ? <label><span>Destination</span><select autoFocus value={navigationDialog.destinationId} onChange={(event) => setNavigationDialog((current) => current?.kind === "move" ? { ...current, destinationId: event.target.value } : current)}><option value="">Top level</option>{folders.filter((folder) => folder.id !== navigationDialog.target.id).map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label> : <label><span>Name</span><input autoFocus maxLength={120} value={navigationDialog.value} onChange={(event) => setNavigationDialog((current) => current && current.kind !== "move" ? { ...current, value: event.target.value } : current)} placeholder={navigationDialog.kind === "create-board" ? "Board name" : navigationDialog.kind === "create-folder" ? "Folder name" : "New name"} /></label>}
+          <div className="navigation-dialog-actions"><button type="button" onClick={() => setNavigationDialog(null)} disabled={dialogBusy}>Cancel</button><button className="primary" disabled={dialogBusy || (navigationDialog.kind !== "move" && !navigationDialog.value.trim())}>{dialogBusy ? "Saving…" : navigationDialogAction}</button></div>
+        </form>
       </div>}
       {toast && <div className={`toast ${toast.error ? "error" : ""}`}>{toast.text}</div>}
     </div>

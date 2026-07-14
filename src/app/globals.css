@@ -87,6 +87,20 @@ kbd { font-family: var(--font-geist-mono), ui-monospace, monospace; }
 .menu-separator { height: 1px; margin: 3px 5px; background: #363936; }
 .create-navigation-menu { position: fixed; z-index: 100; }
 .context-navigation-menu { position: fixed; z-index: 100; }
+.navigation-dialog-backdrop { position: fixed; z-index: 130; inset: 0; padding: 24px; background: rgba(4,5,4,.7); backdrop-filter: blur(5px); display: grid; place-items: center; }
+.navigation-dialog { width: min(410px, 100%); padding: 18px; border: 1px solid #444743; border-radius: 14px; background: #1b1d1b; box-shadow: 0 26px 80px rgba(0,0,0,.55); display: grid; gap: 18px; }
+.navigation-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.navigation-dialog-heading span, .navigation-dialog label > span { display: block; margin-bottom: 6px; color: #747873; font-size: 9px; text-transform: uppercase; letter-spacing: .1em; }
+.navigation-dialog-heading h2 { margin: 0; color: #e2e4df; font-size: 18px; letter-spacing: -.025em; }
+.navigation-dialog-heading button { width: 30px; height: 30px; border-radius: 8px; background: transparent; color: #7d817b; display: grid; place-items: center; cursor: pointer; }
+.navigation-dialog-heading button:hover { background: #292c29; color: var(--text); }
+.navigation-dialog label { display: grid; }
+.navigation-dialog input, .navigation-dialog select { width: 100%; height: 42px; padding: 0 11px; border: 1px solid #3d413d; border-radius: 9px; outline: 0; background: #111311; color: #e0e3dd; font-size: 12px; }
+.navigation-dialog input:focus, .navigation-dialog select:focus { border-color: #5b806e; box-shadow: 0 0 0 3px rgba(85,145,113,.12); }
+.navigation-dialog-actions { display: flex; justify-content: flex-end; gap: 7px; }
+.navigation-dialog-actions button { height: 35px; padding: 0 13px; border-radius: 8px; background: #292c29; color: #b6bab4; cursor: pointer; font-size: 10px; }
+.navigation-dialog-actions button.primary { background: #255640; color: #b8ecd2; }
+.navigation-dialog-actions button:disabled { opacity: .45; cursor: default; }
 .side-list { display: grid; gap: 2px; }
 .side-list button { min-width: 0; height: 34px; border-radius: 8px; padding: 0 9px; background: transparent; display: flex; align-items: center; gap: 8px; color: #a6a9a3; cursor: pointer; text-align: left; font-size: 12px; }
 .side-list button:hover { background: #202220; color: var(--text); }
