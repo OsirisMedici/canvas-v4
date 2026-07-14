@@ -1,17 +1,51 @@
 {
-  "name": "osiris-vault",
-  "version": "0.1.0",
+  "name": "canvas-v4",
+  "version": "4.0.0",
   "private": true,
+  "description": "Canvas v4: a private, offline-first research and media vault for macOS.",
+  "license": "MIT",
+  "author": "Osiris Medici",
+  "homepage": "https://github.com/OsirisMedici/canvas-v4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OsirisMedici/canvas-v4.git"
+  },
   "scripts": {
-    "dev": "next dev",
+    "db:start": "node scripts/start-postgres.mjs",
+    "db:stop": "node scripts/stop-postgres.mjs",
+    "db:schema": "node scripts/apply-schema.mjs",
+    "vault:manifest": "node scripts/write-vault-manifest.mjs",
+    "vault:backup": "node scripts/backup-vault.mjs",
+    "vault:check": "node scripts/check-vault.mjs",
+    "vault:export": "node scripts/export-portable.mjs",
+    "desktop": "electron desktop-electron/main.js",
+    "desktop:build": "node scripts/build-desktop.mjs",
+    "desktop:install": "node scripts/install-desktop.mjs",
+    "desktop:release": "node scripts/release-desktop.mjs",
+    "dev": "next dev --hostname 127.0.0.1 --port 3217",
+    "dev:local": "npm run db:start && npm run dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "next start --hostname 127.0.0.1 --port 3217",
+    "start:local": "npm run db:start && npm run start",
+    "launch": "node scripts/launch.mjs",
+    "stop": "node scripts/stop-local.mjs",
+    "setup:transcription": "python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip faster-whisper",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "check": "npm run lint && npm run typecheck && npm run build"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "@types/jsdom": "^28.0.3",
+    "@types/pg": "^8.20.0",
+    "jsdom": "^27.0.1",
+    "lucide-react": "^1.24.0",
+    "mammoth": "^1.12.0",
     "next": "16.2.10",
+    "pg": "^8.22.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -20,7 +54,11 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "electron": "^42.2.0",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "postcss": "8.5.19"
   }
 }

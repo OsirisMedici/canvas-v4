@@ -19,6 +19,7 @@
 
 # production
 /build
+/dist/
 
 # misc
 .DS_Store
@@ -32,6 +33,17 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# private local data
+/data/*
+!/data/.gitkeep
+!/data/vault/
+/data/vault/*
+!/data/vault/.gitkeep
+/logs/*
+!/logs/.gitkeep
+/.venv/
 
 # vercel
 .vercel
