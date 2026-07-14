@@ -1,6 +1,6 @@
 {
   "name": "canvas-v4",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "private": true,
   "description": "Canvas v4: a private, offline-first research and media vault for macOS.",
   "license": "MIT",

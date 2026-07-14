@@ -25,6 +25,7 @@ type ChatSession = {
 };
 type NavigationTarget = { type: "board" | "folder"; id: string };
 type ContextMenuState = NavigationTarget & { x: number; y: number };
+type MenuPosition = { left: number; top: number };
 type TrashEntry = { id: string; name?: string; title?: string; source_type?: string; board_name?: string; folder_name?: string; item_count?: number; board_count?: number; trashed_at: string };
 type TrashData = { folders: TrashEntry[]; boards: TrashEntry[]; items: TrashEntry[] };
 
@@ -66,7 +67,7 @@ export function VaultApp() {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [folderTreeLoaded, setFolderTreeLoaded] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createMenu, setCreateMenu] = useState<MenuPosition | null>(null);
   const [showTrash, setShowTrash] = useState(false);
   const [trash, setTrash] = useState<TrashData>({ folders: [], boards: [], items: [] });
   const [currentBoardId, setCurrentBoardId] = useState(DEFAULT_BOARD_ID);
@@ -87,6 +88,7 @@ export function VaultApp() {
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const currentBoard = boards.find((board) => board.id === currentBoardId);
   const activeItem = items.find((item) => item.id === activeItemId) || null;
@@ -169,11 +171,20 @@ export function VaultApp() {
   }, [expandedFolders, folderTreeLoaded]);
 
   useEffect(() => {
-    function closeMenus() { setContextMenu(null); setCreateMenuOpen(false); }
-    function closeOnEscape(event: KeyboardEvent) { if (event.key === "Escape") closeMenus(); }
+    function closeMenus() { setContextMenu(null); setCreateMenu(null); }
+    function handleKeyboard(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        closeMenus();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+        return;
+      }
+      if (event.key === "Escape") closeMenus();
+    }
     window.addEventListener("click", closeMenus);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => { window.removeEventListener("click", closeMenus); window.removeEventListener("keydown", closeOnEscape); };
+    window.addEventListener("keydown", handleKeyboard);
+    return () => { window.removeEventListener("click", closeMenus); window.removeEventListener("keydown", handleKeyboard); };
   }, []);
 
   useEffect(() => {
@@ -361,8 +372,19 @@ export function VaultApp() {
   function openContextMenu(event: React.MouseEvent, target: NavigationTarget) {
     event.preventDefault();
     event.stopPropagation();
-    setCreateMenuOpen(false);
+    setCreateMenu(null);
     setContextMenu({ ...target, x: Math.min(event.clientX, window.innerWidth - 190), y: Math.min(event.clientY, window.innerHeight - 220) });
+  }
+
+  function toggleCreateMenu(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setCreateMenu((current) => current ? null : {
+      left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)),
+      top: Math.min(rect.bottom + 6, window.innerHeight - 84),
+    });
   }
 
   function openItem(item: ContentItem, additive = false) {
@@ -510,7 +532,7 @@ export function VaultApp() {
     <div className={`vault-shell ${panelMode ? "has-pane" : ""}`}>
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark"><Sparkles size={15} /></span><strong>Osiris Vault</strong></div>
-        <div className="sidebar-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Create or search" /><kbd>⌘K</kbd></div>
+        <div className="sidebar-search"><Search size={14} /><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Create or search" aria-label="Search this board" /><kbd>⌘K</kbd></div>
 
         <nav className="side-section">
           <div className="side-title"><span>Chats</span></div>
@@ -521,7 +543,7 @@ export function VaultApp() {
         </nav>
 
         <nav className="side-section boards-section">
-          <div className="side-title"><span>Library</span><div className="create-navigation"><button aria-label="Create board or folder" onClick={(event) => { event.stopPropagation(); setCreateMenuOpen((open) => !open); setContextMenu(null); }}><Plus size={13} /></button>{createMenuOpen && <div className="navigation-menu create-navigation-menu" onClick={(event) => event.stopPropagation()}><button onClick={() => { setCreateMenuOpen(false); void createNewBoard(); }}><Grid2X2 size={14} />New board</button><button onClick={() => { setCreateMenuOpen(false); void createNewFolder(); }}><FolderPlus size={14} />New folder</button></div>}</div></div>
+          <div className="side-title"><span>Library</span><div className="create-navigation"><button aria-label="Create board or folder" aria-expanded={Boolean(createMenu)} onClick={toggleCreateMenu}><Plus size={13} /></button></div></div>
           <div className="vault-tree">
             {folders.filter((folder) => !folder.parent_id).map((folder) => folderBranch(folder, 0))}
             {boards.filter((board) => !board.folder_id).map((board) => boardRow(board, 0))}
@@ -606,6 +628,10 @@ export function VaultApp() {
       </aside>}
 
       {selectedIds.size > 0 && panelMode !== "chat" && <div className="selection-bar"><span>{selectedIds.size} selected</span><button onClick={() => startChat([...selectedIds])}><MessageSquare size={14} /> Chat</button><button onClick={() => void deleteSelection()}><Trash2 size={14} /> Delete</button><button className="clear" onClick={() => setSelectedIds(new Set())}><X size={14} /></button></div>}
+      {createMenu && <div className="navigation-menu create-navigation-menu" style={createMenu} onClick={(event) => event.stopPropagation()}>
+        <button onClick={() => { setCreateMenu(null); void createNewBoard(); }}><Grid2X2 size={14} />New board</button>
+        <button onClick={() => { setCreateMenu(null); void createNewFolder(); }}><FolderPlus size={14} />New folder</button>
+      </div>}
       {contextMenu && <div className="navigation-menu context-navigation-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(event) => event.stopPropagation()}>
         {contextMenu.type === "folder" && <><button onClick={() => { setContextMenu(null); void createNewBoard(contextMenu.id); }}><Grid2X2 size={14} />New board here</button><button onClick={() => { setContextMenu(null); void createNewFolder(contextMenu.id); }}><FolderPlus size={14} />New subfolder</button><span className="menu-separator" /></>}
         <button onClick={() => { const target = contextMenu; setContextMenu(null); void renameNavigation(target); }}><Pencil size={14} />Rename</button>

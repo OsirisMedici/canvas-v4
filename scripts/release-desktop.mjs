@@ -35,7 +35,7 @@ const release = {
   product: "Canvas v4 — Osiris Vault", version: packageJson.version, architecture: "arm64", channel,
   publishedAt: new Date().toISOString(), file: path.basename(zipPath), sha256,
   url: process.env.OSIRIS_UPDATE_DOWNLOAD_URL || null,
-  notes: "Folder hierarchy, Trash and restore, direct PDF capture, backups, portable exports, embedded native runtime, and update notifications.",
+  notes: "Sidebar create and action menus are visible and keyboard-accessible, alongside folder hierarchy, Trash and restore, direct PDF capture, backups, portable exports, and the embedded native runtime.",
   dataBoundary: "Updates replace only Osiris Vault.app. External vault folders are never included.",
 };
 writeFileSync(path.join(releaseDir, "release.json"), `${JSON.stringify(release, null, 2)}\n`);

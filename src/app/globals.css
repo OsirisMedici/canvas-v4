@@ -75,8 +75,8 @@ kbd { font-family: var(--font-geist-mono), ui-monospace, monospace; }
 .tree-main .tree-chevron { flex: 0 0 auto; margin-right: -4px; color: #646762; }
 .tree-main span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-main small { margin-left: auto; color: #656963; font-size: 9px; }
-.tree-more { position: absolute; right: 4px; width: 25px; height: 25px; border-radius: 6px; padding: 0; display: grid; place-items: center; background: #252725; color: #7d807b; cursor: pointer; opacity: 0; }
-.tree-row:hover .tree-more, .tree-more:focus-visible { opacity: 1; }
+.tree-more { position: absolute; right: 4px; width: 25px; height: 25px; border-radius: 6px; padding: 0; display: grid; place-items: center; background: #252725; color: #7d807b; cursor: pointer; opacity: .45; }
+.tree-row:hover .tree-more, .tree-row.active .tree-more, .tree-more:focus-visible { opacity: 1; }
 .tree-more:hover { color: var(--text); background: #343634; }
 .tree-folder-empty { height: 27px; padding-left: calc(31px + var(--tree-depth) * 15px); display: flex; align-items: center; color: #50534f; font-size: 9px; font-style: italic; }
 .navigation-menu { min-width: 180px; padding: 5px; border: 1px solid #3b3e3a; border-radius: 10px; background: #222422; box-shadow: 0 18px 46px rgba(0,0,0,.48); display: grid; gap: 2px; }
@@ -85,7 +85,7 @@ kbd { font-family: var(--font-geist-mono), ui-monospace, monospace; }
 .navigation-menu button.danger { color: var(--danger); }
 .navigation-menu button.danger:hover { background: #3b2825; }
 .menu-separator { height: 1px; margin: 3px 5px; background: #363936; }
-.create-navigation-menu { position: absolute; z-index: 90; top: 26px; right: 0; }
+.create-navigation-menu { position: fixed; z-index: 100; }
 .context-navigation-menu { position: fixed; z-index: 100; }
 .side-list { display: grid; gap: 2px; }
 .side-list button { min-width: 0; height: 34px; border-radius: 8px; padding: 0 9px; background: transparent; display: flex; align-items: center; gap: 8px; color: #a6a9a3; cursor: pointer; text-align: left; font-size: 12px; }
