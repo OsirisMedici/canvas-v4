@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Osiris Vault",
-  description: "A private, local-first content library.",
+  title: "Canvas Vault",
+  description: "A private, local-first library that turns your sources into a workspace for Codex.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

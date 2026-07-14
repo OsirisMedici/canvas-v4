@@ -5,7 +5,7 @@ import { dataRoot, ensureVaultDirectories, exportsDir, psql, timestamp } from ".
 import "./write-vault-manifest.mjs";
 
 ensureVaultDirectories();
-const output = path.join(exportsDir, `Osiris-Vault-Portable-${timestamp()}`);
+const output = path.join(exportsDir, `Canvas-Vault-Portable-${timestamp()}`);
 mkdirSync(output, { recursive: true });
 const db = new DatabaseSync(path.join(output, "vault.sqlite"));
 db.exec(`
@@ -44,6 +44,6 @@ db.exec("COMMIT; PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;");
 rmSync(path.join(output, "vault.sqlite-wal"), { force: true });
 rmSync(path.join(output, "vault.sqlite-shm"), { force: true });
 if (process.env.VAULT_EXPORT_WITH_FILES === "1") cpSync(path.join(dataRoot, "vault"), path.join(output, "files"), { recursive: true });
-const manifest = { format: "com.osirismedici.osiris-vault.portable", formatVersion: 1, createdAt: new Date().toISOString(), metadata: "vault.sqlite", filesIncluded: process.env.VAULT_EXPORT_WITH_FILES === "1", counts: { folders: tables.folders.length, boards: tables.boards.length, items: tables.items.length, chats: tables.chats.length, messages: tables.messages.length } };
+const manifest = { format: "com.osirismedici.canvas-vault.portable", formatVersion: 1, createdAt: new Date().toISOString(), metadata: "vault.sqlite", filesIncluded: process.env.VAULT_EXPORT_WITH_FILES === "1", counts: { folders: tables.folders.length, boards: tables.boards.length, items: tables.items.length, chats: tables.chats.length, messages: tables.messages.length } };
 writeFileSync(path.join(output, "vault-manifest.json"), `${JSON.stringify(manifest,null,2)}\n`);
 process.stdout.write(`${output}\n`);

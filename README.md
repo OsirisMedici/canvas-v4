@@ -1,65 +1,57 @@
-# Canvas v4 — Osiris Vault
+# Canvas Vault
 
-Canvas v4 is a private, offline-first research and media vault for macOS. Save boards, nested folders, notes, images, videos, PDFs, webpages, and YouTube sources in one local workspace. The installed desktop application is named **Osiris Vault**.
+Canvas Vault is a private, local-first content library for macOS. It stores boards, folders, notes, images, videos, PDFs, webpages, and YouTube sources. It does not contain bots or an in-app chat mode.
 
-Your source files, database, transcripts, previews, chats, backups, and exports stay on your Mac. No cloud account or hosted database is required. The application binds only to `127.0.0.1`.
+## Install
 
-## Download for macOS
+[![Install Canvas Vault with Codex](assets/install-with-codex.svg)](codex://new?prompt=Install%20Canvas%20Vault%20from%20https%3A%2F%2Fgithub.com%2FOsirisMedici%2Fcanvas-v4.%20If%20the%20repository%20is%20not%20already%20open%2C%20clone%20it%20into%20~%2FCanvas%20Vault%20Source%20and%20work%20there.%20Read%20AGENTS.md%20and%20INSTALLATION.md%2C%20run%20the%20documented%20one-command%20setup%2C%20resolve%20safe%20dependency%20issues%2C%20verify%20%2FApplications%2FCanvas%20Vault.app%20and%20http%3A%2F%2F127.0.0.1%3A3217%2Fapi%2Fhealth%2C%20then%20leave%20the%20application%20running.%20Preserve%20all%20existing%20library%20data%20from%20earlier%20versions.)
 
-Download the latest Apple Silicon release from the [GitHub Releases page](https://github.com/OsirisMedici/canvas-v4/releases/latest), unzip it, and move `Osiris Vault.app` to `/Applications`.
+[**Read or copy the full installation prompt**](INSTALLATION.md)
 
-The current community build is ad-hoc signed rather than Apple-notarized. On first launch, macOS may require you to Control-click the app, choose **Open**, and confirm. You can also remove the downloaded quarantine attribute:
+Open the installation page, click **Open the Canvas Vault installer in Codex**, or copy its complete installation prompt into Codex. Codex will install the repository, build the desktop application, open it, and verify that the setup is healthy.
+
+Prefer a packaged build? [Download the latest Apple Silicon release](https://github.com/OsirisMedici/canvas-v4/releases/latest). The Codex installer remains the easiest path because it can install dependencies and verify the running application automatically.
+
+Already inside the repository? Run:
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Osiris Vault.app"
+npm run setup
 ```
 
-Open the app and press **Start Osiris Vault**. On a new Mac, the default external workspace is created at:
+## How the names work
 
-```text
-~/Documents/Osiris Vault/
-├── postgres/  # dedicated PostgreSQL cluster
-├── models/    # optional local Whisper model cache
-└── vault/     # files, source snapshots, extracted text, and transcripts
-```
+- **Canvas Vault** is the installed application.
+- **Canvas v4** is this source-code repository and major version.
+- **Canvas Workspace** is the human-readable folder you open in Codex: `~/Documents/Canvas Workspace`.
+- **Private app data** contains the database, media, previews, transcripts, backups, and runtime files. New installs keep it under `~/Library/Application Support/Canvas Vault`; existing installations retain their current data folder automatically.
 
-Use **Osiris Vault → Choose Vault Folder** to keep the workspace somewhere else. Replacing or removing the `.app` does not delete this external folder.
+Opening Canvas Workspace in Codex lets Codex use the library files. It does not modify the Canvas Vault interface. Opening this source repository in Codex is development work and can change the application.
 
-## Everyday workflow
+## Install and use
 
-- Copy a link, image, PDF, video, file, or text and press `Command+V` on a board.
-- Drop files directly onto the board.
-- Open a source in the right pane without leaving the board.
-- Select sources and click **Chat**, or chat with the complete board.
-- Create nested folders and multiple boards.
-- Two-finger/Control-click folders and boards to rename, move, or send them to Trash.
-- Restore entries from Trash or permanently delete them after confirmation.
-- Capture direct PDF URLs and store their text and first-page preview locally.
+The macOS application is `/Applications/Canvas Vault.app`. It starts its local runtime automatically and binds only to `127.0.0.1`.
 
-## Backups, portability, and updates
+Inside the app:
 
-The application menu includes:
+- Paste or drop sources into a board.
+- Organize sources with folders and boards.
+- Open **Use with Codex** to refresh and locate Canvas Workspace.
+- In Codex, open `~/Documents/Canvas Workspace`, choose a board, and save new work inside that board's `Outputs/` folder.
 
-- **Choose Vault Folder**
-- **Back Up Vault**
-- **Check Vault Integrity**
-- **Export Portable Vault**
+Canvas Workspace contains generated Markdown source notes plus preserved output folders. Canvas Vault refreshes generated source notes but does not overwrite the work inside `Outputs/`.
+
+## Backups and portability
+
+The **Canvas Vault** application menu includes:
+
+- **Open Canvas Workspace**
+- **Back Up Library**
+- **Check Library Integrity**
+- **Export Portable Library**
 - **Install Transcription Module**
 - **Check for Updates**
 
-A portable export contains a SQLite interchange database and a copy of the vault media. Selecting that portable folder on another Apple Silicon Mac recreates its hierarchy and sources. Application updates replace only `Osiris Vault.app`.
-
-See [Team distribution and updates](docs/02-team-distribution-and-updates.md) for the release, signing, backup, update-feed, and rollback model.
-
-## Optional local tools
-
-PostgreSQL 16, FFmpeg, and Poppler are bundled in the desktop release. These optional capabilities use tools installed for the current macOS user:
-
-- YouTube caption fallback: `yt-dlp`
-- Local audio transcription: install from **Osiris Vault → Install Transcription Module**
-- Board chat: authenticated [Codex CLI](https://github.com/openai/codex)
-
-Ingestion, local storage, previews, caption fetching, and Whisper transcription do not call an LLM. Codex is used only when the user starts an agent chat.
+Replacing `Canvas Vault.app` does not replace the library, Canvas Workspace, or private app data. See [Team distribution and updates](docs/02-team-distribution-and-updates.md) for the release and rollback model.
 
 ## Development
 
@@ -72,23 +64,22 @@ npm run db:schema
 npm run dev
 ```
 
-Quality and desktop workflows:
-
 ```bash
 npm run check
 npm run desktop:build
+npm run desktop:install
 npm run desktop:release
 ```
 
-Development data is ignored by Git and remains outside published releases. Copy `.env.example` to `.env.local` only when local overrides are needed.
+Development data is ignored by Git. Copy `.env.example` to `.env.local` only when local overrides are needed.
 
-## Privacy and support boundary
+## Privacy
 
 - No login or public network listener is included.
-- Every user owns their local workspace and database.
-- Releases never contain the maintainer's vault, database, logs, environment files, or credentials.
-- The first public binary targets Apple Silicon macOS only.
+- Files, database content, previews, and transcripts remain on the Mac.
+- Ingestion and transcription do not call an LLM.
+- Codex is used separately by opening Canvas Workspace.
 
 ## License
 
-Canvas v4 source code is available under the [MIT License](LICENSE).
+Canvas Vault source code is available under the [MIT License](LICENSE).

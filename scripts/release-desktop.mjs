@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
-const appPath = path.join(root, "dist", "electron", "Osiris Vault.app");
+const appPath = path.join(root, "dist", "electron", "Canvas Vault.app");
 const releaseDir = path.join(root, "dist", "release", packageJson.version);
-const zipPath = path.join(releaseDir, `Osiris-Vault-${packageJson.version}-arm64.zip`);
+const zipPath = path.join(releaseDir, `Canvas-Vault-${packageJson.version}-arm64.zip`);
 const identity = process.env.APPLE_SIGNING_IDENTITY;
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: root, stdio: "inherit", ...options });
@@ -32,11 +32,11 @@ if (identity && process.env.APPLE_ID && process.env.APPLE_TEAM_ID && process.env
 }
 const sha256 = createHash("sha256").update(readFileSync(zipPath)).digest("hex");
 const release = {
-  product: "Canvas v4 — Osiris Vault", version: packageJson.version, architecture: "arm64", channel,
+  product: "Canvas Vault", version: packageJson.version, architecture: "arm64", channel,
   publishedAt: new Date().toISOString(), file: path.basename(zipPath), sha256,
   url: process.env.OSIRIS_UPDATE_DOWNLOAD_URL || null,
-  notes: "Sidebar create and action menus are visible and keyboard-accessible, alongside folder hierarchy, Trash and restore, direct PDF capture, backups, portable exports, and the embedded native runtime.",
-  dataBoundary: "Updates replace only Osiris Vault.app. External vault folders are never included.",
+  notes: "Canvas Vault 4.1 adds one-click Codex installation, Canvas Workspace integration, simplified local library navigation, sidebar controls, single-step undo, direct component deletion, and source-aware YouTube previews without in-app chat modes.",
+  dataBoundary: "Updates replace only Canvas Vault.app. The library, Canvas Workspace, and private app data are never included.",
 };
 writeFileSync(path.join(releaseDir, "release.json"), `${JSON.stringify(release, null, 2)}\n`);
 writeFileSync(path.join(releaseDir, "SHA256SUMS"), `${sha256}  ${path.basename(zipPath)}\n`);

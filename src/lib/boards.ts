@@ -66,6 +66,5 @@ export async function trashBoard(id: string) {
               (SELECT COUNT(*)::int FROM content_items WHERE board_id = boards.id) AS item_count,
               created_at, updated_at
   `, [id]);
-  if (result.rows[0]) await query("UPDATE chat_sessions SET trashed_at = now(), updated_at = now() WHERE board_id = $1 AND trashed_at IS NULL", [id]);
   return result.rows[0] || null;
 }

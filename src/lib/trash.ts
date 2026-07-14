@@ -41,7 +41,6 @@ export async function restoreTrash(type: TrashType, id: string) {
       WHERE b.id = input.board_id AND b.trashed_at IS NOT NULL
       RETURNING b.id
     `, [id]);
-    if (result.rows[0]) await query("UPDATE chat_sessions SET trashed_at = NULL, updated_at = now() WHERE board_id = $1", [id]);
     return result.rows[0] || null;
   }
 
@@ -65,7 +64,6 @@ export async function restoreTrash(type: TrashType, id: string) {
       WHERE id = ANY($2::uuid[])
     `, [id, ids]);
     await client.query("UPDATE boards SET trashed_at = NULL, updated_at = now() WHERE folder_id = ANY($1::uuid[])", [ids]);
-    await client.query("UPDATE chat_sessions SET trashed_at = NULL, updated_at = now() WHERE board_id IN (SELECT id FROM boards WHERE folder_id = ANY($1::uuid[]))", [ids]);
     await client.query("COMMIT");
     return { id, folderIds: ids };
   } catch (error) {

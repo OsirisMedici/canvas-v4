@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 const electronApp = path.join(root, "node_modules", "electron", "dist", "Electron.app");
-const output = path.join(root, "dist", "electron", "Osiris Vault.app");
+const electronInstaller = path.join(root, "node_modules", "electron", "install.js");
+const output = path.join(root, "dist", "electron", "Canvas Vault.app");
 const resources = path.join(output, "Contents", "Resources");
 const packagedApp = path.join(resources, "app");
 const standalone = path.join(root, ".next", "standalone");
@@ -16,6 +17,7 @@ function run(command, args, options = {}) {
   if (result.status !== 0) process.exit(result.status || 1);
 }
 
+if (!existsSync(electronApp) && existsSync(electronInstaller)) run(process.execPath, [electronInstaller]);
 if (!existsSync(electronApp)) throw new Error("Electron is not installed. Run npm install first.");
 run("npm", ["run", "build"]);
 if (!existsSync(path.join(standalone, "server.js"))) throw new Error("Next.js standalone server was not produced.");
@@ -24,7 +26,7 @@ rmSync(output, { recursive: true, force: true });
 mkdirSync(path.dirname(output), { recursive: true });
 run("/usr/bin/ditto", [electronApp, output]);
 const originalExecutable = path.join(output, "Contents", "MacOS", "Electron");
-const brandedExecutable = path.join(output, "Contents", "MacOS", "Osiris Vault");
+const brandedExecutable = path.join(output, "Contents", "MacOS", "Canvas Vault");
 if (existsSync(originalExecutable)) cpSync(originalExecutable, brandedExecutable);
 rmSync(originalExecutable, { force: true });
 rmSync(packagedApp, { recursive: true, force: true });
@@ -86,26 +88,26 @@ function copyPackageClosure(name) {
 for (const externalPackage of ["pg", "jsdom", "mammoth"]) copyPackageClosure(externalPackage);
 
 writeFileSync(path.join(packagedApp, "package.json"), JSON.stringify({
-  name: "osiris-vault-desktop",
+  name: "canvas-v4-desktop",
   version: packageJson.version,
   private: true,
   main: "desktop-electron/main.js",
 }, null, 2));
 
 const iconPath = execFileSync(path.join(root, "scripts", "build-app-icon.sh"), { cwd: root, encoding: "utf8" }).trim();
-cpSync(iconPath, path.join(resources, "OsirisVault.icns"));
+cpSync(iconPath, path.join(resources, "CanvasV4.icns"));
 
 const plist = path.join(output, "Contents", "Info.plist");
 const plistBuddy = "/usr/libexec/PlistBuddy";
 const set = (key, value) => run(plistBuddy, ["-c", `Set :${key} ${value}`, plist]);
-set("CFBundleName", "Osiris Vault");
-set("CFBundleDisplayName", "Osiris Vault");
-set("CFBundleExecutable", "Osiris Vault");
-set("CFBundleIdentifier", "com.osirismedici.osiris-vault");
+set("CFBundleName", "Canvas Vault");
+set("CFBundleDisplayName", "Canvas Vault");
+set("CFBundleExecutable", "Canvas Vault");
+set("CFBundleIdentifier", "com.osirismedici.canvas-v4");
 set("CFBundleShortVersionString", packageJson.version);
 set("CFBundleVersion", packageJson.version);
-try { execFileSync(plistBuddy, ["-c", "Set :CFBundleIconFile OsirisVault.icns", plist]); }
-catch { run(plistBuddy, ["-c", "Add :CFBundleIconFile string OsirisVault.icns", plist]); }
+try { execFileSync(plistBuddy, ["-c", "Set :CFBundleIconFile CanvasV4.icns", plist]); }
+catch { run(plistBuddy, ["-c", "Add :CFBundleIconFile string CanvasV4.icns", plist]); }
 
 spawnSync("/usr/bin/xattr", ["-cr", output], { cwd: root, stdio: "ignore" });
 run("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", output]);

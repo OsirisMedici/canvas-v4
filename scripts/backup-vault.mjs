@@ -11,13 +11,13 @@ async function main() {
   }
   await import("./write-vault-manifest.mjs");
   const stamp = timestamp();
-  const dump = path.join(backupsDir, `osiris-vault-${stamp}.dump`);
-  const manifest = path.join(backupsDir, `osiris-vault-${stamp}.manifest.json`);
+  const dump = path.join(backupsDir, `canvas-vault-${stamp}.dump`);
+  const manifest = path.join(backupsDir, `canvas-vault-${stamp}.manifest.json`);
   pgTool("pg_dump", ["-h", "127.0.0.1", "-p", port, "-U", user, "-d", database, "-Fc", "-f", dump]);
   copyFileSync(manifestPath, manifest);
-  const receipt = path.join(backupsDir, `osiris-vault-${stamp}.sha256.json`);
+  const receipt = path.join(backupsDir, `canvas-vault-${stamp}.sha256.json`);
   writeFileSync(receipt, `${JSON.stringify({ createdAt: new Date().toISOString(), dump: path.basename(dump), sha256: checksum(dump), bytes: statSync(dump).size }, null, 2)}\n`);
-  const dumps = readdirSync(backupsDir).filter((name) => name.endsWith(".dump") && name.startsWith("osiris-vault-")).sort().reverse();
+  const dumps = readdirSync(backupsDir).filter((name) => name.endsWith(".dump") && /^(?:canvas|osiris)-vault-/.test(name)).sort().reverse();
   for (const old of dumps.slice(10)) {
     const stem = old.replace(/\.dump$/, "");
     for (const suffix of [".dump", ".manifest.json", ".sha256.json"]) rmSync(path.join(backupsDir, `${stem}${suffix}`), { force: true });

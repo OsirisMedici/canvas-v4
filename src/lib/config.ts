@@ -1,4 +1,5 @@
 import path from "node:path";
+import os from "node:os";
 import { mkdir } from "node:fs/promises";
 
 export function getDataDir() {
@@ -7,6 +8,10 @@ export function getDataDir() {
 
 export function getVaultDir() {
   return path.join(getDataDir(), "vault");
+}
+
+export function getWorkspaceDir() {
+  return process.env.CANVAS_WORKSPACE_DIR || path.join(os.homedir(), "Documents", "Canvas Workspace");
 }
 
 export function getItemDir(id: string) {

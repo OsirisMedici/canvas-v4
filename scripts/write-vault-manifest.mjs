@@ -16,7 +16,7 @@ const counts = JSON.parse(psql(`SELECT json_build_object(
   'schemaVersion', (SELECT max(version) FROM vault_schema_migrations)
 )::text;`));
 const manifest = {
-  format: "com.osirismedici.osiris-vault",
+  format: "com.osirismedici.canvas-vault",
   formatVersion: 1,
   appVersion: process.env.VAULT_APP_VERSION || "0.1.0",
   vaultId: previous.vaultId || psql("SELECT gen_random_uuid()::text;"),

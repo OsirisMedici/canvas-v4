@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const support = process.env.VAULT_RUNTIME_DIR || path.join(os.homedir(), "Library", "Application Support", "Osiris Vault");
+const support = process.env.VAULT_RUNTIME_DIR || path.join(os.homedir(), "Library", "Application Support", "Canvas Vault");
 const runtime = path.join(support, "runtime");
 const venv = path.join(runtime, "venv");
 mkdirSync(runtime, { recursive: true });

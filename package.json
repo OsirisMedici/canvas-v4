@@ -1,8 +1,8 @@
 {
   "name": "canvas-v4",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "private": true,
-  "description": "Canvas v4: a private, offline-first research and media vault for macOS.",
+  "description": "Canvas Vault: a private, offline-first research and media library for macOS.",
   "license": "MIT",
   "author": "Osiris Medici",
   "homepage": "https://github.com/OsirisMedici/canvas-v4",
@@ -11,6 +11,7 @@
     "url": "git+https://github.com/OsirisMedici/canvas-v4.git"
   },
   "scripts": {
+    "setup": "node scripts/setup.mjs",
     "db:start": "node scripts/start-postgres.mjs",
     "db:stop": "node scripts/stop-postgres.mjs",
     "db:schema": "node scripts/apply-schema.mjs",

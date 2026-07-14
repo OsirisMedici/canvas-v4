@@ -83,7 +83,6 @@ export async function trashFolder(id: string) {
     `, [folderIds]);
     if (Number(remaining.rows[0]?.count || 0) < 1) throw new Error("Keep at least one active board outside this folder.");
     await client.query("UPDATE boards SET trashed_at = now(), updated_at = now() WHERE folder_id = ANY($1::uuid[]) AND trashed_at IS NULL", [folderIds]);
-    await client.query("UPDATE chat_sessions SET trashed_at = now(), updated_at = now() WHERE board_id IN (SELECT id FROM boards WHERE folder_id = ANY($1::uuid[])) AND trashed_at IS NULL", [folderIds]);
     await client.query("UPDATE folders SET trashed_at = now(), updated_at = now() WHERE id = ANY($1::uuid[])", [folderIds]);
     await client.query("COMMIT");
     return { id, folderIds };

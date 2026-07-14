@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SOURCE="$ROOT_DIR/assets/osiris-vault-icon.svg"
 WORK="$ROOT_DIR/dist/icon-build"
-ICONSET="$WORK/OsirisVault.iconset"
-OUTPUT="$ROOT_DIR/dist/OsirisVault.icns"
+ICONSET="$WORK/CanvasV4.iconset"
+OUTPUT="$ROOT_DIR/dist/CanvasV4.icns"
 
 rm -rf "$WORK"
 mkdir -p "$ICONSET"

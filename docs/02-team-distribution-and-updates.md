@@ -1,46 +1,40 @@
-# Canvas v4 — Osiris Vault Team Distribution and Updates
+# Canvas Vault distribution and updates
 
-## Release boundary
+## Release artifact
 
-Every release replaces only `Osiris Vault.app`. A teammate's selected vault folder, database, media, previews, transcripts, backups, exports, logs, and runtime preferences stay outside the application bundle.
+The Apple Silicon release is `Canvas-Vault-<version>-arm64.zip`, containing `Canvas Vault.app`. The app bundle includes the local Next.js server and native runtime tools. Optional local transcription models remain outside the bundle.
 
-## Build channels
+## Install
 
-- `local-adhoc`: personal testing on this Mac.
-- `developer-id`: signed with an Apple Developer ID certificate.
-- `notarized`: Developer ID signed, submitted to Apple, accepted, and stapled.
+1. Move `Canvas Vault.app` to `/Applications`.
+2. Open it. Canvas Vault starts its local runtime automatically.
+3. Paste or drop material into boards.
+4. Choose **Use with Codex** when you want to work with the material in Codex.
 
-Run `npm run desktop:release`. Without Apple credentials it creates a locally signed ZIP, checksum, and `release.json`. For external distribution provide these environment variables:
+The default Codex-facing folder is `~/Documents/Canvas Workspace`.
+
+## Updates
+
+An update replaces only `/Applications/Canvas Vault.app`. It does not replace:
+
+- the private database and media;
+- Canvas Workspace or board outputs;
+- backups and portable exports;
+- runtime settings and logs;
+- local transcription modules or models.
+
+Update feed settings are stored in:
 
 ```text
-APPLE_SIGNING_IDENTITY
-APPLE_ID
-APPLE_TEAM_ID
-APPLE_APP_PASSWORD
+~/Library/Application Support/Canvas Vault/runtime.json
 ```
 
-Credentials are read only from the environment and are never written into the repository or application.
+Canvas Vault checks at launch and once every 24 hours when a feed is configured. A failed check never blocks offline use.
 
-## Update feed
+## Backup and rollback
 
-Host the generated `release.json` and ZIP over HTTPS, then add the JSON URL as `updateFeed` in:
+Before a release, use **Back Up Library** and **Check Library Integrity**. Keep the previous signed application ZIP and the latest verified database dump. To roll back, stop Canvas Vault and replace only the application. Restore database data only when necessary.
 
-```text
-~/Library/Application Support/Osiris Vault/runtime.json
-```
+## Legacy users
 
-The application checks on launch and every 24 hours. Update failures do not block offline use. A new release opens its download after user approval; the signed ZIP replaces the `.app`, not the vault.
-
-## Teammate first run
-
-1. Install the signed application in `/Applications`.
-2. Open it and choose or create a vault folder.
-3. Press **Start Osiris Vault**.
-4. The app initializes its external database and manifest.
-5. Use **Back Up Vault**, **Check Vault Integrity**, and **Export Portable Vault** from the application menu.
-
-The Apple Silicon release embeds PostgreSQL 16, FFmpeg, FFprobe, Poppler PDF tools, and their non-system dynamic libraries. Codex chat requires that teammate's Codex installation/login. Local Whisper transcription is an optional module because its models and Python runtime are large.
-
-## Rollback
-
-Keep the previous signed application ZIP and the latest `.dump`, manifest snapshot, and SHA-256 receipt. To roll back, stop the Vault, replace only the application, and restore a database dump only when a schema migration actually changed the data.
+The first Canvas Vault launch imports runtime settings from earlier releases without moving or deleting existing private data. The earlier app bundle and support folder remain untouched until the user chooses to remove them.

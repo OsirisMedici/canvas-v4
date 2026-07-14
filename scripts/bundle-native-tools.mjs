@@ -104,7 +104,7 @@ for (const file of machFiles) {
 }
 
 const runtime = {
-  format: "com.osirismedici.osiris-vault.native-runtime",
+  format: "com.osirismedici.canvas-vault.native-runtime",
   architecture: "arm64",
   builtAt: new Date().toISOString(),
   tools: Object.fromEntries(Object.keys(toolSources).map((name) => [name, `tools/bin/${name}`])),

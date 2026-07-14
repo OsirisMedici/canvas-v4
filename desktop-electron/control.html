@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Osiris Vault</title>
+  <title>Canvas Vault</title>
   <style>
     :root { color-scheme: dark; --bg:#0c0d0c; --card:#151715; --line:#292d29; --text:#f5f7f5; --muted:#949a94; --green:#70d69d; --green2:#4db87b; --danger:#ff7c7c; }
     * { box-sizing: border-box; }
@@ -31,28 +31,29 @@
 <body>
   <main>
     <div class="mark" aria-hidden="true">✦</div>
-    <p class="eyebrow">Private local workspace</p>
-    <h1 id="title">Vault is closed</h1>
-    <p class="lead" id="lead">Your database and files stay on this Mac. Start the local runtime when you want to use the vault.</p>
+    <p class="eyebrow">Your private content library</p>
+    <h1 id="title">Opening Canvas Vault</h1>
+    <p class="lead" id="lead">Preparing your library and Canvas Workspace. Everything stays on this Mac.</p>
     <section class="status" aria-live="polite">
       <span>Status</span><strong id="state">Closed</strong>
       <span>Runtime</span><strong id="phase">Not running</strong>
       <span>Database</span><strong id="database">Stopped</strong>
-      <div class="path" id="dataPath"></div>
+      <div class="path" id="workspacePath"></div>
     </section>
     <div class="actions">
-      <button class="primary" id="start">Start Osiris Vault</button>
-      <button id="stop" hidden>Stop Vault</button>
-      <button id="data">Open data folder</button>
-      <button id="choose">Choose vault folder</button>
+      <button class="primary" id="start">Open Canvas Vault</button>
+      <button id="stop" hidden>Stop Canvas Vault</button>
+      <button id="workspace">Open Canvas Workspace</button>
+      <button id="chooseWorkspace">Choose workspace folder</button>
+      <button id="data">Private data</button>
       <button id="logs">Open logs</button>
     </div>
     <p class="error" id="error" hidden></p>
     <p class="note">Private to this Mac · 127.0.0.1:3217</p>
   </main>
   <script>
-    const bridge = window.osirisVaultDesktop;
-    const nodes = Object.fromEntries(["title","lead","state","phase","database","dataPath","start","stop","data","choose","logs","error"].map((id) => [id, document.getElementById(id)]));
+    const bridge = window.canvasV4Desktop;
+    const nodes = Object.fromEntries(["title","lead","state","phase","database","workspacePath","start","stop","workspace","chooseWorkspace","data","logs","error"].map((id) => [id, document.getElementById(id)]));
     let timer;
 
     function humanState(value) { return value ? value[0].toUpperCase() + value.slice(1) : "Closed"; }
@@ -61,27 +62,27 @@
       nodes.state.textContent = humanState(state);
       nodes.phase.textContent = status?.startupPhase || (state === "closed" ? "Not running" : "Ready");
       nodes.database.textContent = humanState(status?.databaseStatus || "stopped");
-      nodes.dataPath.textContent = status?.dataPath || "";
+      nodes.workspacePath.textContent = status?.workspacePath || "";
       nodes.error.hidden = !status?.error;
       nodes.error.textContent = status?.error || "";
       nodes.start.disabled = state === "starting";
-      nodes.start.textContent = state === "starting" ? "Starting…" : state === "external" ? "Open existing Vault" : "Start Osiris Vault";
+      nodes.start.textContent = state === "starting" ? "Opening…" : state === "external" ? "Open Canvas Vault" : "Start Canvas Vault";
       nodes.stop.hidden = state !== "open";
       if (state === "starting") {
-        nodes.title.textContent = "Starting Osiris Vault";
-        nodes.lead.textContent = "Preparing the local database and application. This can take a few seconds.";
+        nodes.title.textContent = "Opening Canvas Vault";
+        nodes.lead.textContent = "Preparing your local library. This can take a few seconds.";
       } else if (state === "external") {
-        nodes.title.textContent = "Vault is already running";
-        nodes.lead.textContent = "A healthy Osiris Vault server is already using the local port. This app will reuse it without starting a duplicate.";
+        nodes.title.textContent = "Canvas Vault is already running";
+        nodes.lead.textContent = "The existing local Canvas Vault runtime will be reused safely.";
       } else if (state === "error") {
-        nodes.title.textContent = "Vault needs attention";
+        nodes.title.textContent = "Canvas Vault needs attention";
         nodes.lead.textContent = "The local runtime could not start. The message below explains what to repair.";
       } else if (state === "open") {
-        nodes.title.textContent = "Vault is open";
-        nodes.lead.textContent = "The local runtime is healthy and ready.";
+        nodes.title.textContent = "Canvas Vault is ready";
+        nodes.lead.textContent = "Your library and Canvas Workspace are ready to use.";
       } else {
-        nodes.title.textContent = "Vault is closed";
-        nodes.lead.textContent = "Your database and files stay on this Mac. Start the local runtime when you want to use the vault.";
+        nodes.title.textContent = "Canvas Vault is closed";
+        nodes.lead.textContent = "Open the app when you want to use your local content library.";
       }
     }
 
@@ -93,15 +94,17 @@
     nodes.start.addEventListener("click", async () => {
       nodes.start.disabled = true;
       timer = setInterval(refresh, 350);
-      try { render(await bridge.startVault()); }
+      try { render(await bridge.start()); }
       catch (error) { render({ state:"error", error:error.message }); }
       finally { clearInterval(timer); nodes.start.disabled = false; }
     });
-    nodes.stop.addEventListener("click", async () => render(await bridge.stopVault()));
-    nodes.data.addEventListener("click", () => bridge.revealDataFolder());
-    nodes.choose.addEventListener("click", async () => render(await bridge.chooseVaultFolder()));
-    nodes.logs.addEventListener("click", () => bridge.revealLogsFolder());
+    nodes.stop.addEventListener("click", async () => render(await bridge.stop()));
+    nodes.workspace.addEventListener("click", () => bridge.openWorkspace());
+    nodes.chooseWorkspace.addEventListener("click", async () => render(await bridge.chooseWorkspace()));
+    nodes.data.addEventListener("click", () => bridge.revealPrivateData());
+    nodes.logs.addEventListener("click", () => bridge.revealLogs());
     refresh();
+    setInterval(refresh, 1000);
   </script>
 </body>
 </html>

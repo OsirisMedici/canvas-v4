@@ -20,7 +20,7 @@ child.unref(); closeSync(fd); writeFileSync(appPidFile, String(child.pid));
 for (let attempt = 0; attempt < 60; attempt += 1) {
   try {
     const response = await fetch("http://127.0.0.1:3217/api/health");
-    if (response.ok) { execFileSync("open", ["http://127.0.0.1:3217"]); process.stdout.write("Osiris Vault is open at http://127.0.0.1:3217\n"); process.exit(0); }
+    if (response.ok) { execFileSync("open", ["http://127.0.0.1:3217"]); process.stdout.write("Canvas Vault is open at http://127.0.0.1:3217\n"); process.exit(0); }
   } catch { /* wait */ }
   await new Promise((resolve) => setTimeout(resolve, 500));
 }

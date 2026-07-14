@@ -5,26 +5,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Captions, Check, ChevronDown, ChevronLeft, ChevronRight, Database, ExternalLink,
-  File, Folder, FolderOpen, FolderPlus, Grid2X2, Link2, LoaderCircle,
-  MessageSquare, MoreHorizontal, PanelRightClose, Pencil, Plus, Rows3,
-  RotateCcw, Search, Send, Sparkles, Trash2, X,
+  BookOpen, Captions, Check, ChevronDown, ChevronLeft, ChevronRight, Database,
+  ExternalLink, File, Folder, FolderOpen, FolderPlus, Grid2X2, LoaderCircle,
+  MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, Pencil, Plus, Rows3, RotateCcw, Search,
+  Sparkles, Trash2, Undo2, X,
 } from "lucide-react";
-import type { Board, ChatMessage, ContentItem, Folder as VaultFolder } from "@/lib/types";
+import type { Board, ContentItem, Folder as VaultFolder } from "@/lib/types";
 
-type PanelMode = "detail" | "chat";
+type PanelMode = "detail";
 type ViewMode = "grid" | "list";
-type ChatSession = {
-  id: string;
-  board_id: string;
-  title: string;
-  scope_type: "board" | "selection";
-  source_item_ids: string[];
-  created_at: string;
-  updated_at: string;
-};
 type NavigationTarget = { type: "board" | "folder"; id: string };
 type ContextMenuState = NavigationTarget & { x: number; y: number };
+type ItemMenuState = { id: string; x: number; y: number };
 type MenuPosition = { left: number; top: number };
 type NavigationDialog =
   | { kind: "create-board"; folderId: string | null; value: string }
@@ -33,6 +25,11 @@ type NavigationDialog =
   | { kind: "move"; target: NavigationTarget; destinationId: string };
 type TrashEntry = { id: string; name?: string; title?: string; source_type?: string; board_name?: string; folder_name?: string; item_count?: number; board_count?: number; trashed_at: string };
 type TrashData = { folders: TrashEntry[]; boards: TrashEntry[]; items: TrashEntry[] };
+type UndoTarget = { type: NavigationTarget["type"] | "item"; id: string };
+type UndoAction =
+  | { kind: "restore"; label: string; targets: UndoTarget[] }
+  | { kind: "trash"; label: string; targets: UndoTarget[] }
+  | { kind: "patch"; label: string; target: NavigationTarget; body: Record<string, string | null> };
 
 const DEFAULT_BOARD_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -58,6 +55,37 @@ function youtubeEmbed(item: ContentItem) {
   return item.external_id ? `https://www.youtube.com/embed/${item.external_id}?rel=0&modestbranding=1` : null;
 }
 
+function youtubeOrientation(item: ContentItem) {
+  if (item.source_type !== "youtube") return null;
+  const savedOrientation = item.metadata.canvasOrientation;
+  if (savedOrientation === "portrait" || savedOrientation === "landscape") return savedOrientation;
+  const width = typeof item.metadata.width === "number" ? item.metadata.width : null;
+  const height = typeof item.metadata.height === "number" ? item.metadata.height : null;
+  const aspectRatio = typeof item.metadata.aspect_ratio === "number" ? item.metadata.aspect_ratio : null;
+  if ((width && height && height > width) || (aspectRatio && aspectRatio < 1)) return "portrait";
+  return "landscape";
+}
+
+function youtubeDetails(item: ContentItem) {
+  const details: string[] = [];
+  if (item.author && item.author !== "YouTube") details.push(item.author);
+  if (typeof item.view_count === "number") {
+    details.push(`${new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(item.view_count)} views`);
+  }
+  return details.join(" · ") || "YouTube";
+}
+
+function durationLabel(seconds: number | null) {
+  if (!seconds) return null;
+  const total = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainingSeconds = total % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`
+    : `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
 function urlsFromText(text: string) {
   return text.match(/https?:\/\/[^\s<>"']+/gi) || [];
 }
@@ -72,6 +100,7 @@ export function VaultApp() {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [folderTreeLoaded, setFolderTreeLoaded] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [itemMenu, setItemMenu] = useState<ItemMenuState | null>(null);
   const [createMenu, setCreateMenu] = useState<MenuPosition | null>(null);
   const [navigationDialog, setNavigationDialog] = useState<NavigationDialog | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -88,14 +117,14 @@ export function VaultApp() {
   const [loading, setLoading] = useState(true);
   const [dragActive, setDragActive] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
-  const [chats, setChats] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [chatScopeIds, setChatScopeIds] = useState<string[]>([]);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatBusy, setChatBusy] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [howToUseOpen, setHowToUseOpen] = useState(false);
+  const [workspaceDir, setWorkspaceDir] = useState<string | null>(null);
+  const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
+  const [undoBusy, setUndoBusy] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarPreferenceLoaded, setSidebarPreferenceLoaded] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const itemClickTimer = useRef<number | null>(null);
 
   const currentBoard = boards.find((board) => board.id === currentBoardId);
   const activeItem = items.find((item) => item.id === activeItemId) || null;
@@ -125,7 +154,7 @@ export function VaultApp() {
     setFolders(data.folders);
     setExpandedFolders((current) => {
       if (current.size) return current;
-      const saved = window.localStorage.getItem("osiris-vault-expanded-folders");
+      const saved = window.localStorage.getItem("canvas-v4-expanded-folders") || window.localStorage.getItem("osiris-vault-expanded-folders");
       if (saved) {
         try { return new Set(JSON.parse(saved) as string[]); } catch { /* Use the default below. */ }
       }
@@ -155,15 +184,58 @@ export function VaultApp() {
     }
   }, [currentBoardId, notify]);
 
-  const loadChats = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/chats?board=${encodeURIComponent(currentBoardId)}`, { cache: "no-store" });
-      const data = await response.json();
-      if (response.ok) setChats(data.chats);
-    } catch {
-      // The board remains usable if chat history cannot load.
+  const recordUndo = useCallback((action: UndoAction) => {
+    setUndoStack([action]);
+  }, []);
+
+  const executeUndoAction = useCallback(async (action: UndoAction) => {
+    if (action.kind === "restore") {
+      for (const target of action.targets) {
+        const response = await fetch("/api/trash/restore", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(target),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not restore the previous action.");
+      }
     }
-  }, [currentBoardId]);
+    if (action.kind === "trash") {
+      for (const target of action.targets) {
+        const collection = target.type === "item" ? "items" : target.type === "board" ? "boards" : "folders";
+        const response = await fetch(`/api/${collection}/${target.id}`, { method: "DELETE" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not undo the previous action.");
+      }
+    }
+    if (action.kind === "patch") {
+      const collection = action.target.type === "board" ? "boards" : "folders";
+      const response = await fetch(`/api/${collection}/${action.target.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(action.body),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not undo the previous action.");
+    }
+    await Promise.all([loadBoards(), loadFolders(), loadItems(), showTrash ? loadTrash() : Promise.resolve()]);
+  }, [loadBoards, loadFolders, loadItems, loadTrash, showTrash]);
+
+  const undoLastAction = useCallback(async () => {
+    const action = undoStack[0];
+    if (!action || undoBusy) return;
+    setUndoBusy(true);
+    setUndoStack((current) => current.slice(1));
+    try {
+      await executeUndoAction(action);
+      notify(`Undid: ${action.label}.`);
+    } catch (error) {
+      setUndoStack([action]);
+      notify(error instanceof Error ? error.message : "Undo failed.", true);
+    } finally {
+      setUndoBusy(false);
+    }
+  }, [executeUndoAction, notify, undoBusy, undoStack]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -174,11 +246,25 @@ export function VaultApp() {
 
   useEffect(() => {
     if (!folderTreeLoaded) return;
-    window.localStorage.setItem("osiris-vault-expanded-folders", JSON.stringify([...expandedFolders]));
+    window.localStorage.setItem("canvas-v4-expanded-folders", JSON.stringify([...expandedFolders]));
   }, [expandedFolders, folderTreeLoaded]);
 
   useEffect(() => {
-    function closeMenus() { setContextMenu(null); setCreateMenu(null); }
+    const timer = window.setTimeout(() => {
+      const saved = window.localStorage.getItem("canvas-v4-sidebar-open");
+      if (saved !== null) setSidebarOpen(saved === "true");
+      setSidebarPreferenceLoaded(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarPreferenceLoaded) return;
+    window.localStorage.setItem("canvas-v4-sidebar-open", String(sidebarOpen));
+  }, [sidebarOpen, sidebarPreferenceLoaded]);
+
+  useEffect(() => {
+    function closeMenus() { setContextMenu(null); setItemMenu(null); setCreateMenu(null); }
     function handleKeyboard(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -187,30 +273,50 @@ export function VaultApp() {
         searchRef.current?.select();
         return;
       }
-      if (event.key === "Escape") { closeMenus(); setNavigationDialog(null); }
+      if (event.key === "Escape") { closeMenus(); setNavigationDialog(null); setHowToUseOpen(false); }
     }
     window.addEventListener("click", closeMenus);
     window.addEventListener("keydown", handleKeyboard);
-    return () => { window.removeEventListener("click", closeMenus); window.removeEventListener("keydown", handleKeyboard); };
+    return () => {
+      if (itemClickTimer.current) window.clearTimeout(itemClickTimer.current);
+      window.removeEventListener("click", closeMenus);
+      window.removeEventListener("keydown", handleKeyboard);
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleUndoShortcut(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.key.toLowerCase() !== "z" || target?.closest("input, textarea, [contenteditable='true']")) return;
+      event.preventDefault();
+      void undoLastAction();
+    }
+    window.addEventListener("keydown", handleUndoShortcut);
+    return () => window.removeEventListener("keydown", handleUndoShortcut);
+  }, [undoLastAction]);
+
+  useEffect(() => {
+    function handleSidebarShortcut(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "b") return;
+      event.preventDefault();
+      setSidebarOpen((current) => !current);
+    }
+    window.addEventListener("keydown", handleSidebarShortcut);
+    return () => window.removeEventListener("keydown", handleSidebarShortcut);
   }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setSelectedIds(new Set());
       setPanelMode(null);
-      setActiveSessionId(null);
-      setChatMessages([]);
-      void Promise.all([loadItems(), loadChats()]);
+      void loadItems();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [currentBoardId, loadChats, loadItems]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [chatMessages, chatBusy]);
+  }, [currentBoardId, loadItems]);
 
   const saveText = useCallback(async (text: string) => {
     const urls = urlsFromText(text);
+    const itemIds: string[] = [];
     if (urls.length) {
       for (const url of urls.slice(0, 20)) {
         const response = await fetch("/api/items", {
@@ -220,9 +326,10 @@ export function VaultApp() {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
+        if (data.item?.id) itemIds.push(data.item.id);
       }
       notify(`${Math.min(urls.length, 20)} link${urls.length === 1 ? "" : "s"} added to the board.`);
-      return;
+      return itemIds;
     }
     const response = await fetch("/api/items", {
       method: "POST",
@@ -232,9 +339,11 @@ export function VaultApp() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
     notify("Pasted note added to the board.");
+    return data.item?.id ? [data.item.id] : [];
   }, [currentBoardId, notify]);
 
   const uploadFiles = useCallback(async (files: File[]) => {
+    const itemIds: string[] = [];
     for (const file of files.slice(0, 30)) {
       const form = new FormData();
       form.append("file", file);
@@ -242,22 +351,29 @@ export function VaultApp() {
       const response = await fetch("/api/uploads", { method: "POST", body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
+      if (data.item?.id) itemIds.push(data.item.id);
     }
     notify(`${Math.min(files.length, 30)} file${files.length === 1 ? "" : "s"} added to the board.`);
+    return itemIds;
   }, [currentBoardId, notify]);
 
-  const ingest = useCallback(async (action: () => Promise<void>) => {
+  const ingest = useCallback(async (action: () => Promise<string[]>) => {
     if (busy) return;
     setBusy(true);
     try {
-      await action();
+      const itemIds = await action();
       await Promise.all([loadItems(), loadBoards()]);
+      if (itemIds.length) recordUndo({
+        kind: "trash",
+        label: `added ${itemIds.length} source${itemIds.length === 1 ? "" : "s"}`,
+        targets: itemIds.map((id) => ({ type: "item", id })),
+      });
     } catch (error) {
       notify(error instanceof Error ? error.message : "This item could not be added.", true);
     } finally {
       setBusy(false);
     }
-  }, [busy, loadBoards, loadItems, notify]);
+  }, [busy, loadBoards, loadItems, notify, recordUndo]);
 
   useEffect(() => {
     function onPaste(event: ClipboardEvent) {
@@ -280,6 +396,7 @@ export function VaultApp() {
     if (folderId) setExpandedFolders((current) => new Set(current).add(folderId));
     await Promise.all([loadBoards(), loadFolders()]);
     setCurrentBoardId(data.board.id);
+    recordUndo({ kind: "trash", label: `created board “${data.board.name}”`, targets: [{ type: "board", id: data.board.id }] });
     notify(`Board “${data.board.name}” created.`);
   }
 
@@ -289,6 +406,7 @@ export function VaultApp() {
     if (!response.ok) throw new Error(data.error || "Could not create the folder.");
     if (parentId) setExpandedFolders((current) => new Set(current).add(parentId));
     await loadFolders();
+    recordUndo({ kind: "trash", label: `created folder “${data.folder.name}”`, targets: [{ type: "folder", id: data.folder.id }] });
     notify(`Folder “${data.folder.name}” created.`);
   }
 
@@ -302,14 +420,25 @@ export function VaultApp() {
   }
 
   async function renameNavigation(target: NavigationTarget, name: string) {
+    const previousName = target.type === "board" ? boards.find((board) => board.id === target.id)?.name : folders.find((folder) => folder.id === target.id)?.name;
     await patchNavigation(target, { name });
+    if (previousName) recordUndo({ kind: "patch", label: `renamed ${target.type}`, target, body: { name: previousName } });
     notify(`${target.type === "board" ? "Board" : "Folder"} renamed.`);
   }
 
   async function moveNavigation(target: NavigationTarget, destinationId: string) {
     const destination = folders.find((folder) => folder.id === destinationId) || null;
+    const previousDestinationId = target.type === "board"
+      ? boards.find((board) => board.id === target.id)?.folder_id || null
+      : folders.find((folder) => folder.id === target.id)?.parent_id || null;
     await patchNavigation(target, target.type === "board" ? { folderId: destination?.id || null } : { parentId: destination?.id || null });
     if (destination) setExpandedFolders((current) => new Set(current).add(destination.id));
+    recordUndo({
+      kind: "patch",
+      label: `moved ${target.type}`,
+      target,
+      body: target.type === "board" ? { folderId: previousDestinationId } : { parentId: previousDestinationId },
+    });
     notify(`${target.type === "board" ? "Board" : "Folder"} moved.`);
   }
 
@@ -333,13 +462,11 @@ export function VaultApp() {
   }
 
   async function trashNavigation(target: NavigationTarget) {
-    const name = target.type === "board" ? boards.find((board) => board.id === target.id)?.name : folders.find((folder) => folder.id === target.id)?.name;
-    const detail = target.type === "folder" ? " Its nested folders and boards will also move to Trash. Stored files will remain untouched." : " Its stored sources and files will remain untouched.";
-    if (!window.confirm(`Move “${name || target.type}” to Trash?${detail}`)) return;
     const response = await fetch(`/api/${target.type === "board" ? "boards" : "folders"}/${target.id}`, { method: "DELETE" });
     const data = await response.json();
     if (!response.ok) return notify(data.error || `Could not trash the ${target.type}.`, true);
     await Promise.all([loadBoards(), loadFolders()]);
+    recordUndo({ kind: "restore", label: `moved ${target.type} to Trash`, targets: [target] });
     notify(`${target.type === "board" ? "Board" : "Folder"} moved to Trash.`);
   }
 
@@ -355,12 +482,11 @@ export function VaultApp() {
     const data = await response.json();
     if (!response.ok) return notify(data.error || "Restore failed.", true);
     await Promise.all([loadTrash(), loadBoards(), loadFolders()]);
+    recordUndo({ kind: "trash", label: `restored ${type}`, targets: [{ type, id }] });
     notify("Restored to the vault.");
   }
 
   async function permanentlyDeleteEntry(type: NavigationTarget["type"] | "item", entry: TrashEntry) {
-    const label = entry.name || entry.title || type;
-    if (!window.confirm(`Permanently delete “${label}”? This removes its database record and local files and cannot be undone.`)) return;
     const response = await fetch(`/api/trash/${type}/${entry.id}`, { method: "DELETE" });
     const data = await response.json();
     if (!response.ok) return notify(data.error || "Permanent deletion failed.", true);
@@ -370,7 +496,7 @@ export function VaultApp() {
 
   async function emptyTrashNow() {
     const count = trash.folders.length + trash.boards.length + trash.items.length;
-    if (!count || !window.confirm(`Permanently delete all ${count} entries in Trash? This cannot be undone.`)) return;
+    if (!count) return;
     const response = await fetch("/api/trash", { method: "DELETE" });
     const data = await response.json();
     if (!response.ok) return notify(data.error || "Could not empty Trash.", true);
@@ -390,13 +516,25 @@ export function VaultApp() {
     event.preventDefault();
     event.stopPropagation();
     setCreateMenu(null);
+    setItemMenu(null);
     setContextMenu({ ...target, x: Math.min(event.clientX, window.innerWidth - 190), y: Math.min(event.clientY, window.innerHeight - 220) });
+  }
+
+  function openItemMenu(event: React.MouseEvent, item: ContentItem) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (itemClickTimer.current) window.clearTimeout(itemClickTimer.current);
+    itemClickTimer.current = null;
+    setCreateMenu(null);
+    setContextMenu(null);
+    setItemMenu({ id: item.id, x: Math.min(event.clientX, window.innerWidth - 190), y: Math.min(event.clientY, window.innerHeight - 76) });
   }
 
   function toggleCreateMenu(event: React.MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     event.stopPropagation();
     setContextMenu(null);
+    setItemMenu(null);
     const rect = event.currentTarget.getBoundingClientRect();
     setCreateMenu((current) => current ? null : {
       left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)),
@@ -413,6 +551,16 @@ export function VaultApp() {
       if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
       return next;
     });
+  }
+
+  function handleItemClick(event: React.MouseEvent, item: ContentItem) {
+    if (event.detail > 1) return;
+    const additive = event.metaKey || event.ctrlKey;
+    if (itemClickTimer.current) window.clearTimeout(itemClickTimer.current);
+    itemClickTimer.current = window.setTimeout(() => {
+      openItem(item, additive);
+      itemClickTimer.current = null;
+    }, 220);
   }
 
   function toggleSelection(item: ContentItem) {
@@ -450,7 +598,7 @@ export function VaultApp() {
 
   async function deleteSelection() {
     const ids = [...selectedIds];
-    if (!ids.length || !window.confirm(`Move ${ids.length} selected item${ids.length === 1 ? "" : "s"} to Trash? Local files will remain recoverable.`)) return;
+    if (!ids.length) return;
     setBusy(true);
     try {
       for (const id of ids) {
@@ -460,6 +608,7 @@ export function VaultApp() {
       setSelectedIds(new Set());
       setPanelMode(null);
       await Promise.all([loadItems(), loadBoards()]);
+      recordUndo({ kind: "restore", label: `moved ${ids.length} source${ids.length === 1 ? "" : "s"} to Trash`, targets: ids.map((id) => ({ type: "item", id })) });
       notify("Selection moved to Trash.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Delete failed.", true);
@@ -468,49 +617,39 @@ export function VaultApp() {
     }
   }
 
-  function startChat(ids: string[]) {
-    setChatScopeIds(ids);
-    setChatMessages([]);
-    setActiveSessionId(null);
-    setPanelMode("chat");
-    window.setTimeout(() => document.querySelector<HTMLInputElement>(".chat-input")?.focus(), 80);
-  }
-
-  async function openChat(session: ChatSession) {
-    setPanelMode("chat");
-    setActiveSessionId(session.id);
-    setChatScopeIds(session.source_item_ids || []);
-    setChatMessages([]);
-    const response = await fetch(`/api/chats/${session.id}`, { cache: "no-store" });
-    const data = await response.json();
-    if (response.ok) setChatMessages(data.messages);
-  }
-
-  async function sendChat(event: React.FormEvent) {
-    event.preventDefault();
-    const message = chatInput.trim();
-    if (!message || chatBusy) return;
-    setChatInput("");
-    const optimistic: ChatMessage = { id: `local-${Date.now()}`, session_id: activeSessionId || "", role: "user", content: message, created_at: new Date().toISOString() };
-    setChatMessages((current) => [...current, optimistic]);
-    setChatBusy(true);
+  async function deleteItemFromMenu(id: string) {
+    setItemMenu(null);
+    setSelectedIds(new Set([id]));
+    setBusy(true);
     try {
-      const response = await fetch("/api/chats", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ boardId: currentBoardId, itemIds: chatScopeIds, message, sessionId: activeSessionId }),
-      });
+      const response = await fetch(`/api/items/${id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "This source could not be moved to Trash.");
+      setSelectedIds(new Set());
+      if (activeItemId === id) {
+        setActiveItemId(null);
+        setPanelMode(null);
+      }
+      await Promise.all([loadItems(), loadBoards()]);
+      recordUndo({ kind: "restore", label: "moved source to Trash", targets: [{ type: "item", id }] });
+      notify("Source moved to Trash.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Delete failed.", true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openHowToUse() {
+    setHowToUseOpen(true);
+    if (workspaceDir) return;
+    try {
+      const response = await fetch("/api/workspace", { method: "POST" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-      setActiveSessionId(data.session.id);
-      setChatMessages((current) => [...current, data.message]);
-      await loadChats();
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "The local agent could not answer.", true);
-      setChatMessages((current) => current.filter((entry) => entry.id !== optimistic.id));
-      setChatInput(message);
-    } finally {
-      setChatBusy(false);
+      if (typeof data.workspaceDir === "string") setWorkspaceDir(data.workspaceDir);
+    } catch {
+      // The guide still works with the documented default path.
     }
   }
 
@@ -523,7 +662,6 @@ export function VaultApp() {
     else if (text.trim()) void ingest(() => saveText(text.trim()));
   }
 
-  const scopeItems = chatScopeIds.map((id) => items.find((item) => item.id === id)).filter(Boolean) as ContentItem[];
   const navigationDialogTitle = navigationDialog?.kind === "create-board" ? "Create a new board" : navigationDialog?.kind === "create-folder" ? "Create a new folder" : navigationDialog?.kind === "rename" ? `Rename ${navigationDialog.target.type}` : "Move to a folder";
   const navigationDialogAction = navigationDialog?.kind === "rename" ? "Rename" : navigationDialog?.kind === "move" ? "Move" : "Create";
 
@@ -548,18 +686,10 @@ export function VaultApp() {
   }
 
   return (
-    <div className={`vault-shell ${panelMode ? "has-pane" : ""}`}>
-      <aside className="sidebar">
-        <div className="brand"><span className="brand-mark"><Sparkles size={15} /></span><strong>Osiris Vault</strong></div>
+    <div className={`vault-shell ${panelMode ? "has-pane" : ""} ${sidebarOpen ? "" : "sidebar-hidden"}`}>
+      <aside className="sidebar" aria-hidden={!sidebarOpen}>
+        <div className="brand"><span className="brand-mark"><Sparkles size={15} /></span><strong>Canvas Vault</strong><button className="sidebar-hide-toggle" onClick={() => setSidebarOpen(false)} aria-label="Hide sidebar" title="Hide sidebar (⌘B)"><PanelLeftClose size={15} /></button></div>
         <div className="sidebar-search"><Search size={14} /><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Create or search" aria-label="Search this board" /><kbd>⌘K</kbd></div>
-
-        <nav className="side-section">
-          <div className="side-title"><span>Chats</span></div>
-          <div className="side-list chat-list">
-            {chats.slice(0, 6).map((chat) => <button key={chat.id} className={activeSessionId === chat.id ? "active" : ""} onClick={() => void openChat(chat)}><span className="dot" /> <span>{chat.title}</span></button>)}
-            {!chats.length && <div className="side-empty">Chats with sources appear here</div>}
-          </div>
-        </nav>
 
         <nav className="side-section boards-section">
           <div className="side-title"><span>Library</span><div className="create-navigation"><button aria-label="Create board or folder" aria-expanded={Boolean(createMenu)} onClick={toggleCreateMenu}><Plus size={13} /></button></div></div>
@@ -569,11 +699,14 @@ export function VaultApp() {
           </div>
         </nav>
 
+        <button className="sidebar-undo" onClick={() => void undoLastAction()} disabled={!undoStack.length || undoBusy} title={undoStack[0]?.label || "Nothing to undo"}><Undo2 className={undoBusy ? "spin" : ""} size={13} /><span>Undo</span><kbd>⌘Z</kbd></button>
+        <button className="sidebar-guide" onClick={() => void openHowToUse()}><BookOpen size={13} /><span>Use with Codex</span></button>
         <button className={`sidebar-trash ${showTrash ? "active" : ""}`} onClick={() => void openTrash()}><Trash2 size={13} /><span>Trash</span><small>{trash.folders.length + trash.boards.length + trash.items.length || ""}</small></button>
-        <div className="sidebar-foot"><Database size={13} /><span><strong>Local vault</strong>Your Mac is the server</span></div>
+        <div className="sidebar-foot"><Database size={13} /><span><strong>Personal library</strong>Files stay on this Mac</span></div>
       </aside>
 
       <main className="board-main" onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragActive(false); }} onDrop={handleDrop}>
+        {!sidebarOpen && <button className="sidebar-show-toggle" onClick={() => setSidebarOpen(true)} aria-label="Show sidebar" title="Show sidebar (⌘B)"><PanelLeftOpen size={15} /><span>Show sidebar</span></button>}
         {showTrash ? <>
           <header className="board-header trash-header"><div><p>Recoverable storage</p><h1>Trash</h1></div><button className="empty-trash-button" onClick={() => void emptyTrashNow()} disabled={!trash.folders.length && !trash.boards.length && !trash.items.length}><Trash2 size={14} />Empty Trash</button></header>
           <section className="trash-view">
@@ -591,7 +724,6 @@ export function VaultApp() {
           <div className="board-actions">
             <span className="paste-hint"><kbd>⌘V</kbd> paste · drop anywhere</span>
             <div className="view-switch"><button className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Grid view"><Grid2X2 size={15} /></button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="List view"><Rows3 size={15} /></button></div>
-            <button className="chat-board-button" onClick={() => startChat([])}><MessageSquare size={14} /> Chat with board</button>
           </div>
         </header>
 
@@ -606,10 +738,20 @@ export function VaultApp() {
                 const preview = previewUrl(item);
                 const checked = selectedIds.has(item.id);
                 const textPreview = item.content_text || item.description || "";
-                return <article key={item.id} className={`source-card ${checked ? "selected" : ""} ${preview ? "visual" : "textual"} ${item.source_type === "document" ? "document" : ""}`} onClick={(event) => openItem(item, event.metaKey || event.ctrlKey)}>
+                const orientation = youtubeOrientation(item);
+                const videoDuration = item.source_type === "youtube" ? durationLabel(item.duration_seconds) : null;
+                return <article
+                  key={item.id}
+                  className={`source-card ${checked ? "selected" : ""} ${preview ? "visual" : "textual"} ${item.source_type === "document" ? "document" : ""} ${orientation ? `youtube youtube-${orientation}` : ""}`}
+                  title="Double-click for actions"
+                  onClick={(event) => handleItemClick(event, item)}
+                  onDoubleClick={(event) => openItemMenu(event, item)}
+                  onContextMenu={(event) => openItemMenu(event, item)}
+                >
                   <button className="select-control" aria-label={checked ? "Deselect source" : "Select source"} onClick={(event) => { event.stopPropagation(); toggleSelection(item); }}>{checked ? <Check size={12} /> : <span />}</button>
-                  {preview ? <div className="source-preview"><img src={preview} alt="" /></div> : <div className="text-preview"><span>{sourceLabel(item)}</span><h2>{item.title}</h2>{textPreview && <p>{textPreview}</p>}</div>}
-                  <footer><div><span>{sourceLabel(item)}</span><strong>{item.source_type === "youtube" ? "YouTube Video" : item.file_name || item.title}</strong></div>{item.transcript_status === "ready" && <Captions size={13} />}</footer>
+                  <button className="item-action-control" aria-label={`Actions for ${item.title}`} onClick={(event) => openItemMenu(event, item)}><MoreHorizontal size={14} /></button>
+                  {preview ? <div className="source-preview"><img src={preview} alt="" />{videoDuration && <span className="video-duration">{videoDuration}</span>}</div> : <div className="text-preview"><span>{sourceLabel(item)}</span><h2>{item.title}</h2>{textPreview && <p>{textPreview}</p>}</div>}
+                  <footer><div>{item.source_type === "youtube" ? <><strong title={item.title}>{item.title}</strong><span>{youtubeDetails(item)}</span></> : <><span>{sourceLabel(item)}</span><strong title={item.file_name || item.title}>{item.file_name || item.title}</strong></>}</div>{item.transcript_status === "ready" && <Captions size={13} />}</footer>
                 </article>;
               })}
             </div>
@@ -627,26 +769,16 @@ export function VaultApp() {
               : activeItem.source_type === "audio" && activeItem.file_path ? <div className="audio-player"><audio src={`/api/items/${activeItem.id}/file`} controls /></div>
               : previewUrl(activeItem) ? <div className="pane-media contain"><img src={previewUrl(activeItem)!} alt="" /></div> : null}
             <div className="pane-copy"><span className="source-kind">{sourceLabel(activeItem)}</span><h2>{activeItem.title}</h2>{activeItem.author && <p className="author">{activeItem.author}</p>}
-              <div className="pane-actions"><button onClick={() => startChat([activeItem.id])}><MessageSquare size={14} /> Chat with this source</button>{activeItem.canonical_url && <a href={activeItem.canonical_url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Original</a>}{activeItem.file_path && <a href={`/api/items/${activeItem.id}/file`} target="_blank"><File size={14} /> Open file</a>}</div>
+              <div className="pane-actions">{activeItem.canonical_url && <a href={activeItem.canonical_url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Original</a>}{activeItem.file_path && <a href={`/api/items/${activeItem.id}/file`} target="_blank"><File size={14} /> Open file</a>}</div>
               {(activeItem.content_text || activeItem.description) && <section className="readable-text"><h3>{activeItem.source_type === "note" ? "Note" : "Extracted text"}</h3><p>{activeItem.content_text || activeItem.description}</p></section>}
               {["youtube", "video", "audio"].includes(activeItem.source_type) && <section className="readable-text"><h3>Transcript</h3>{activeItem.transcript_status === "ready" && activeItem.transcript_text ? <p>{activeItem.transcript_text}</p> : <div className="transcript-prompt"><p>{activeItem.transcript_status === "failed" ? activeItem.transcript_error : "Fetch this only when you need the spoken text."}</p><button disabled={busy} onClick={() => void fetchTranscript(activeItem)}>{busy ? <LoaderCircle className="spin" size={13} /> : <Captions size={13} />} {activeItem.transcript_status === "failed" ? "Try again" : "Fetch transcript"}</button></div>}</section>}
             </div>
           </div>
         </>}
 
-        {panelMode === "chat" && <>
-          <div className="pane-bar chat-pane-bar"><div><span>New chat</span><small>Local Codex agent</small></div><button onClick={() => setPanelMode(null)} aria-label="Close chat"><X size={17} /></button></div>
-          <div className="chat-body">
-            <div className="chat-scope"><Sparkles size={15} /><div><span>Talking with</span><strong>{chatScopeIds.length ? `${chatScopeIds.length} selected source${chatScopeIds.length === 1 ? "" : "s"}` : currentBoard?.name}</strong></div></div>
-            {scopeItems.length > 0 && <div className="scope-chips">{scopeItems.map((item) => <span key={item.id}><Link2 size={11} />{item.title}<button onClick={() => setChatScopeIds((current) => current.filter((id) => id !== item.id))}><X size={10} /></button></span>)}</div>}
-            {!chatMessages.length && <div className="chat-welcome"><div className="agent-mark"><Sparkles size={22} /></div><h2>What are we making today?</h2><p>Ask for a synthesis, outline, rewrite, research note, or a direct answer grounded in these sources.</p></div>}
-            <div className="messages">{chatMessages.map((message) => <div key={message.id} className={`message ${message.role}`}><span>{message.role === "assistant" ? "Agent" : "You"}</span><p>{message.content}</p></div>)}{chatBusy && <div className="message assistant thinking"><span>Agent</span><p><LoaderCircle className="spin" size={14} /> Reading your sources…</p></div>}<div ref={chatEndRef} /></div>
-          </div>
-          <form className="chat-composer" onSubmit={sendChat}><textarea className="chat-input" value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Ask about this board or selected sources…" /><div><span>Enter to send · Shift+Enter for a line</span><button disabled={!chatInput.trim() || chatBusy}><Send size={15} /></button></div></form>
-        </>}
       </aside>}
 
-      {selectedIds.size > 0 && panelMode !== "chat" && <div className="selection-bar"><span>{selectedIds.size} selected</span><button onClick={() => startChat([...selectedIds])}><MessageSquare size={14} /> Chat</button><button onClick={() => void deleteSelection()}><Trash2 size={14} /> Delete</button><button className="clear" onClick={() => setSelectedIds(new Set())}><X size={14} /></button></div>}
+      {selectedIds.size > 0 && <div className="selection-bar"><span>{selectedIds.size} selected</span><button onClick={() => void deleteSelection()}><Trash2 size={14} /> Delete</button><button className="clear" onClick={() => setSelectedIds(new Set())}><X size={14} /></button></div>}
       {createMenu && <div className="navigation-menu create-navigation-menu" style={createMenu} onClick={(event) => event.stopPropagation()}>
         <button onClick={() => { setCreateMenu(null); setNavigationDialog({ kind: "create-board", folderId: null, value: "" }); }}><Grid2X2 size={14} />New board</button>
         <button onClick={() => { setCreateMenu(null); setNavigationDialog({ kind: "create-folder", parentId: null, value: "" }); }}><FolderPlus size={14} />New folder</button>
@@ -658,12 +790,27 @@ export function VaultApp() {
         <span className="menu-separator" />
         <button className="danger" onClick={() => { const target = contextMenu; setContextMenu(null); void trashNavigation(target); }}><Trash2 size={14} />Move to Trash</button>
       </div>}
+      {itemMenu && <div className="navigation-menu item-navigation-menu" style={{ left: itemMenu.x, top: itemMenu.y }} onClick={(event) => event.stopPropagation()}>
+        <button className="danger" onClick={() => void deleteItemFromMenu(itemMenu.id)}><Trash2 size={14} />Move to Trash</button>
+      </div>}
       {navigationDialog && <div className="navigation-dialog-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target && !dialogBusy) setNavigationDialog(null); }}>
         <form className="navigation-dialog" onSubmit={submitNavigationDialog}>
           <div className="navigation-dialog-heading"><div><span>Library</span><h2>{navigationDialogTitle}</h2></div><button type="button" aria-label="Close" onClick={() => setNavigationDialog(null)} disabled={dialogBusy}><X size={16} /></button></div>
           {navigationDialog.kind === "move" ? <label><span>Destination</span><select autoFocus value={navigationDialog.destinationId} onChange={(event) => setNavigationDialog((current) => current?.kind === "move" ? { ...current, destinationId: event.target.value } : current)}><option value="">Top level</option>{folders.filter((folder) => folder.id !== navigationDialog.target.id).map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label> : <label><span>Name</span><input autoFocus maxLength={120} value={navigationDialog.value} onChange={(event) => setNavigationDialog((current) => current && current.kind !== "move" ? { ...current, value: event.target.value } : current)} placeholder={navigationDialog.kind === "create-board" ? "Board name" : navigationDialog.kind === "create-folder" ? "Folder name" : "New name"} /></label>}
           <div className="navigation-dialog-actions"><button type="button" onClick={() => setNavigationDialog(null)} disabled={dialogBusy}>Cancel</button><button className="primary" disabled={dialogBusy || (navigationDialog.kind !== "move" && !navigationDialog.value.trim())}>{dialogBusy ? "Saving…" : navigationDialogAction}</button></div>
         </form>
+      </div>}
+      {howToUseOpen && <div className="navigation-dialog-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setHowToUseOpen(false); }}>
+        <section className="how-to-dialog" role="dialog" aria-modal="true" aria-labelledby="how-to-title">
+          <div className="navigation-dialog-heading"><div><span>Canvas Vault</span><h2 id="how-to-title">Use Canvas Workspace with Codex</h2></div><button type="button" aria-label="Close" onClick={() => setHowToUseOpen(false)}><X size={16} /></button></div>
+          <p className="how-to-intro">Canvas Vault stores and organizes your material. The thinking, writing, and specialist tools live in Codex.</p>
+          <ol className="how-to-steps">
+            <li><span>1</span><div><strong>Open the Canvas Workspace in Codex</strong><p>In Codex, choose <em>Open folder</em> and select this generated workspace:</p><code>{workspaceDir || "~/Documents/Canvas Workspace"}</code></div></li>
+            <li><span>2</span><div><strong>Choose the relevant folder or board</strong><p>Tell Codex which material to read. Your saved files, extracted text, and transcripts stay together in the library.</p></div></li>
+            <li><span>3</span><div><strong>Use any Codex skill or agent</strong><p>Write, research, brainstorm, or create outputs with the files as context. Canvas Vault does not contain bots or a chat mode.</p></div></li>
+          </ol>
+          <p className="how-to-note">The guide refreshes the workspace before showing it. You can also choose <strong>Canvas Vault → Open Canvas Workspace</strong> from the desktop app menu.</p>
+        </section>
       </div>}
       {toast && <div className={`toast ${toast.error ? "error" : ""}`}>{toast.text}</div>}
     </div>

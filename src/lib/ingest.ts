@@ -26,7 +26,7 @@ function canonicalize(input: string) {
   return url;
 }
 
-async function ingestYouTube(url: URL, id: string): Promise<IngestedItem> {
+async function ingestYouTube(url: URL, id: string, originalUrl: URL): Promise<IngestedItem> {
   let metadata: Record<string, unknown> = {};
   try {
     const { stdout } = await runCommand("yt-dlp", ["--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", url.toString()], 45_000);
@@ -38,6 +38,12 @@ async function ingestYouTube(url: URL, id: string): Promise<IngestedItem> {
   }
 
   const timestamp = typeof metadata.timestamp === "number" ? new Date(metadata.timestamp * 1000).toISOString() : null;
+  const width = typeof metadata.width === "number" ? metadata.width : null;
+  const height = typeof metadata.height === "number" ? metadata.height : null;
+  const aspectRatio = typeof metadata.aspect_ratio === "number" ? metadata.aspect_ratio : null;
+  const canvasOrientation = originalUrl.pathname.startsWith("/shorts/") || (width && height && height > width) || (aspectRatio && aspectRatio < 1)
+    ? "portrait"
+    : "landscape";
   return {
     source_type: "youtube",
     canonical_url: url.toString(),
@@ -50,7 +56,7 @@ async function ingestYouTube(url: URL, id: string): Promise<IngestedItem> {
     duration_seconds: typeof metadata.duration === "number" ? Math.round(metadata.duration) : null,
     view_count: typeof metadata.view_count === "number" ? metadata.view_count : null,
     transcript_status: "not_requested",
-    metadata,
+    metadata: { ...metadata, canvasOrientation, originalUrl: originalUrl.toString() },
   };
 }
 
@@ -64,7 +70,7 @@ function responseFileName(response: Response, url: URL) {
 
 async function ingestWebPage(url: URL): Promise<IngestedUrl> {
   const response = await fetch(url, {
-    headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) OsirisVault/1.0" },
+    headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) CanvasVault/4.0" },
     redirect: "follow",
     signal: AbortSignal.timeout(20_000),
   });
@@ -116,14 +122,16 @@ async function ingestWebPage(url: URL): Promise<IngestedUrl> {
 
 export async function ingestUrl(input: string): Promise<IngestedUrl> {
   let url: URL;
+  let originalUrl: URL;
   try {
+    originalUrl = new URL(input.trim());
     url = canonicalize(input);
   } catch {
     throw new Error("Enter a complete public URL beginning with http:// or https://.");
   }
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error("Only public HTTP and HTTPS links are supported.");
   const id = youtubeId(url);
-  if (id) return ingestYouTube(url, id);
+  if (id) return ingestYouTube(url, id, originalUrl);
   if ((url.hostname === "chatgpt.com" || url.hostname === "chat.openai.com") && !url.pathname.startsWith("/share/")) {
     throw new Error("Private ChatGPT conversations cannot be read from a link. Paste the conversation text or upload an exported HTML, Markdown, text, or JSON file instead.");
   }

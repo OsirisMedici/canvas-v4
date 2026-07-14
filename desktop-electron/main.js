@@ -8,7 +8,8 @@ const path = require("node:path");
 const { promisify } = require("node:util");
 
 const execFileAsync = promisify(execFile);
-const APP_NAME = "Osiris Vault";
+const APP_NAME = "Canvas Vault";
+const PREVIOUS_APP_NAMES = ["Canvas v4", "Osiris Vault"];
 const LOCAL_HOST = "127.0.0.1";
 const APP_PORT = 3217;
 const PG_PORT = 5447;
@@ -22,13 +23,15 @@ const SCHEMA_PATH = app.isPackaged ? path.join(APP_ROOT, "runtime", "schema.sql"
 const TRANSCRIBE_SCRIPT = app.isPackaged ? path.join(APP_ROOT, "runtime", "transcribe.py") : path.join(APP_ROOT, "scripts", "transcribe.py");
 const NATIVE_ROOT = path.join(APP_ROOT, "native");
 
+const APP_DATA_DIR = app.getPath("appData");
 app.setName(APP_NAME);
-app.setPath("userData", path.join(app.getPath("appData"), APP_NAME));
+app.setPath("userData", path.join(APP_DATA_DIR, APP_NAME));
 
 const SUPPORT_DIR = app.getPath("userData");
 const LOG_DIR = path.join(app.getPath("logs"));
 const DOWNLOAD_DIR = path.join(app.getPath("downloads"), APP_NAME);
 const CONFIG_PATH = path.join(SUPPORT_DIR, "runtime.json");
+const PREVIOUS_CONFIG_PATHS = PREVIOUS_APP_NAMES.map((name) => path.join(APP_DATA_DIR, name, "runtime.json"));
 const PID_PATH = path.join(SUPPORT_DIR, "server.pid");
 const ELECTRON_LOG = path.join(LOG_DIR, "electron.log");
 const SERVER_LOG = path.join(LOG_DIR, "server.log");
@@ -64,11 +67,11 @@ function appendLog(message) {
 
 function loadRuntimeConfig() {
   const defaults = {
-    dataDir: path.join(os.homedir(), "Documents", "Osiris Vault"),
+    dataDir: path.join(SUPPORT_DIR, "Data"),
+    workspaceDir: path.join(os.homedir(), "Documents", "Canvas Workspace"),
     pgBin: "/opt/homebrew/opt/postgresql@16/bin",
     ffmpeg: "/opt/homebrew/bin/ffmpeg",
     pdftoppm: "/opt/homebrew/bin/pdftoppm",
-    codex: "/opt/homebrew/bin/codex",
     ytDlp: "/Library/Frameworks/Python.framework/Versions/3.13/bin/yt-dlp",
     updateFeed: null,
     transcribePython: app.isPackaged
@@ -81,11 +84,19 @@ function loadRuntimeConfig() {
     defaults.pdftoppm = path.join(NATIVE_ROOT, "tools", "bin", "pdftoppm");
   }
   try {
-    const loaded = { ...defaults, ...JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")) };
+    const sourcePath = fs.existsSync(CONFIG_PATH) ? CONFIG_PATH : PREVIOUS_CONFIG_PATHS.find((candidate) => fs.existsSync(candidate));
+    if (!sourcePath) return defaults;
+    const loaded = { ...defaults, ...JSON.parse(fs.readFileSync(sourcePath, "utf8")) };
+    delete loaded.codex;
     if (app.isPackaged && !loaded.preferSystemTools && fs.existsSync(path.join(NATIVE_ROOT, "postgres", "bin", "postgres"))) {
       loaded.pgBin = path.join(NATIVE_ROOT, "postgres", "bin");
       loaded.ffmpeg = path.join(NATIVE_ROOT, "tools", "bin", "ffmpeg");
       loaded.pdftoppm = path.join(NATIVE_ROOT, "tools", "bin", "pdftoppm");
+    }
+    if (sourcePath !== CONFIG_PATH) {
+      ensureDirectories();
+      fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(loaded, null, 2)}\n`, "utf8");
+      appendLog(`migrated runtime settings from ${sourcePath}`);
     }
     return loaded;
   } catch {
@@ -118,7 +129,6 @@ function resolveTools(config) {
     pgCtl: pg("pg_ctl"), initdb: pg("initdb"), psql: pg("psql"), createdb: pg("createdb"),
     ffmpeg: executable(config.ffmpeg, "ffmpeg"),
     pdftoppm: executable(config.pdftoppm, "pdftoppm"),
-    codex: executable(config.codex, "codex"),
     ytDlp: executable(config.ytDlp, "yt-dlp"),
     transcribePython: executable(config.transcribePython, "python3"),
   };
@@ -129,12 +139,13 @@ function preflight() {
   const tools = resolveTools(config);
   const missingCore = ["pgCtl", "initdb", "psql", "createdb"].filter((key) => !tools[key]);
   fs.mkdirSync(config.dataDir, { recursive: true });
+  fs.mkdirSync(config.workspaceDir, { recursive: true });
   if (!fs.existsSync(SERVER_ENTRY)) {
     throw new Error(app.isPackaged
-      ? "The packaged Next.js server is missing. Reinstall Osiris Vault.app."
+      ? "The packaged Next.js server is missing. Reinstall Canvas Vault.app."
       : "The local Next.js server is not built. Run npm run build once, then reopen the desktop app.");
   }
-  if (!fs.existsSync(SCHEMA_PATH)) throw new Error("The database schema is missing. Reinstall Osiris Vault.app.");
+  if (!fs.existsSync(SCHEMA_PATH)) throw new Error("The database schema is missing. Reinstall Canvas Vault.app.");
   if (missingCore.length) {
     throw new Error("PostgreSQL 16 is required but its local tools were not found. Repair it with: brew install postgresql@16");
   }
@@ -142,8 +153,7 @@ function preflight() {
   if (!tools.ffmpeg) warnings.push("FFmpeg is missing; video previews and transcription audio will be unavailable. Repair: brew install ffmpeg");
   if (!tools.pdftoppm) warnings.push("Poppler is missing; PDF previews will be unavailable. Repair: brew install poppler");
   if (!tools.ytDlp) warnings.push("yt-dlp is missing; YouTube captions and audio import will be unavailable. Repair: python3 -m pip install yt-dlp");
-  if (!tools.transcribePython || !fs.existsSync(TRANSCRIBE_SCRIPT)) warnings.push("Whisper is not ready. Use Osiris Vault → Install Transcription Module.");
-  if (!tools.codex) warnings.push("Codex CLI is missing; local board chat will be unavailable until Codex is installed.");
+  if (!tools.transcribePython || !fs.existsSync(TRANSCRIBE_SCRIPT)) warnings.push("Whisper is not ready. Use Canvas Vault → Install Transcription Module.");
   return { config, tools, warnings };
 }
 
@@ -154,6 +164,7 @@ function runtimeEnv(config, tools) {
     PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
     VAULT_PROJECT_DIR: APP_ROOT,
     VAULT_DATA_DIR: config.dataDir,
+    CANVAS_WORKSPACE_DIR: config.workspaceDir,
     VAULT_LOG_DIR: LOG_DIR,
     VAULT_RUNTIME_DIR: SUPPORT_DIR,
     VAULT_SCHEMA_PATH: SCHEMA_PATH,
@@ -169,7 +180,6 @@ function runtimeEnv(config, tools) {
     PDFTOPPM_BIN: tools.pdftoppm || "pdftoppm",
     PDFTOTEXT_BIN: app.isPackaged && fs.existsSync(path.join(NATIVE_ROOT, "tools", "bin", "pdftotext")) ? path.join(NATIVE_ROOT, "tools", "bin", "pdftotext") : "pdftotext",
     YTDLP_BIN: tools.ytDlp || "yt-dlp",
-    CODEX_BIN: tools.codex || "codex",
     TRANSCRIBE_PYTHON: tools.transcribePython || "python3",
     TRANSCRIBE_SCRIPT,
     WHISPER_MODEL: process.env.WHISPER_MODEL || "base",
@@ -193,9 +203,9 @@ async function postgresIsRunning(tools, config) {
   }
 }
 
-function fetchJson(url, timeout = 2500) {
+function fetchJson(url, { timeout = 2500, method = "GET" } = {}) {
   return new Promise((resolve, reject) => {
-    const request = http.get(url, { headers: { Accept: "application/json" } }, (response) => {
+    const request = http.request(url, { method, headers: { Accept: "application/json" } }, (response) => {
       let body = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => { body += chunk; });
@@ -206,6 +216,7 @@ function fetchJson(url, timeout = 2500) {
     });
     request.on("error", reject);
     request.setTimeout(timeout, () => request.destroy(new Error("Health request timed out.")));
+    request.end();
   });
 }
 
@@ -234,7 +245,7 @@ async function waitForHealth() {
     if (serverProcess?.exitCode !== null) throw new Error("The packaged server exited before it became healthy. Open the logs for details.");
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
-  throw new Error("Osiris Vault did not become healthy within 45 seconds. Open the logs for details.");
+  throw new Error("Canvas Vault did not become healthy within 45 seconds. Open the logs for details.");
 }
 
 function statusSnapshot() {
@@ -246,6 +257,7 @@ function statusSnapshot() {
     managedBy: currentHealth?.managedBy || null,
     databaseStatus: currentHealth?.database?.status || (postgresStartedByApp ? "starting" : "stopped"),
     dataPath: config.dataDir,
+    workspacePath: config.workspaceDir,
     localUrl: `${LOCAL_ORIGIN}/`,
     startupPhase: runtime.startupPhase,
     error: runtime.error,
@@ -311,7 +323,7 @@ async function startVault() {
     }
     const occupied = listeningPids(APP_PORT);
     if (occupied.length) {
-      throw new Error(`Port ${APP_PORT} is already used by another process (PID ${occupied.join(", ")}). Osiris Vault did not stop or kill it. Close that application, then try again.`);
+      throw new Error(`Port ${APP_PORT} is already used by another process (PID ${occupied.join(", ")}). Canvas Vault did not stop or kill it. Close that application, then try again.`);
     }
 
     const { config, tools, warnings } = preflight();
@@ -397,7 +409,7 @@ async function stopVault() {
   if (!serverProcess) {
     currentHealth = await health();
     runtime.state = currentHealth ? "external" : "closed";
-    if (currentHealth) runtime.error = "This server was started outside Osiris Vault.app, so the app left it running.";
+    if (currentHealth) runtime.error = "This server was started outside Canvas Vault.app, so the app left it running.";
     await loadControl();
     return statusSnapshot();
   }
@@ -465,7 +477,7 @@ function showWindow() {
 async function runVaultUtility(script, label, extraEnv = {}, timeout = 120_000) {
   try {
     const { config, tools } = preflight();
-    if (!await postgresIsRunning(tools, config)) throw new Error("Start Osiris Vault before running this action.");
+    if (!await postgresIsRunning(tools, config)) throw new Error("Start Canvas Vault before running this action.");
     const { stdout } = await nodeScript(path.join(RUNTIME_SCRIPTS, script), { ...runtimeEnv(config, tools), ...extraEnv }, timeout);
     if (Notification.isSupported()) new Notification({ title: APP_NAME, body: `${label} completed.` }).show();
     appendLog(`${label.toLowerCase()} completed: ${stdout.trim().split("\n").at(-1) || "ok"}`);
@@ -489,17 +501,70 @@ async function installTranscriptionModule() {
   } catch (error) { dialog.showErrorBox("Transcription installation failed", error.message); }
 }
 
-async function chooseVaultFolder() {
+async function choosePrivateDataFolder() {
   if (serverProcess || await health()) {
-    dialog.showMessageBoxSync(mainWindow, { type: "info", title: APP_NAME, message: "Stop the Vault before switching data folders." });
+    dialog.showMessageBoxSync(mainWindow, { type: "info", title: APP_NAME, message: "Stop Canvas Vault before switching its private data folder." });
     return statusSnapshot();
   }
-  const result = await dialog.showOpenDialog(mainWindow, { title: "Choose or create an Osiris Vault folder", properties: ["openDirectory", "createDirectory", "promptToCreate"] });
+  const result = await dialog.showOpenDialog(mainWindow, { title: "Choose Canvas Vault private data folder", properties: ["openDirectory", "createDirectory", "promptToCreate"] });
   if (result.canceled || !result.filePaths[0]) return statusSnapshot();
   const dataDir = result.filePaths[0];
   fs.mkdirSync(dataDir, { recursive: true });
   saveRuntimeConfig({ dataDir });
-  runtime = { ...runtime, state: "closed", startupPhase: "Vault folder selected", error: null };
+  runtime = { ...runtime, state: "closed", startupPhase: "Private data folder selected", error: null };
+  await loadControl();
+  return statusSnapshot();
+}
+
+async function prepareCanvasWorkspace() {
+  const config = loadRuntimeConfig();
+  fs.mkdirSync(config.workspaceDir, { recursive: true });
+  const activeHealth = await health();
+  if (!activeHealth) return config.workspaceDir;
+  const response = await fetchJson(`${LOCAL_ORIGIN}/api/workspace`, { method: "POST", timeout: 60_000 });
+  if (response.statusCode < 200 || response.statusCode >= 300 || !response.body?.workspaceDir) {
+    throw new Error(response.body?.error || "Canvas Vault could not prepare the Codex workspace.");
+  }
+  return response.body.workspaceDir;
+}
+
+async function openCanvasWorkspace() {
+  try {
+    const workspaceDir = await prepareCanvasWorkspace();
+    const error = await shell.openPath(workspaceDir);
+    if (error) throw new Error(error);
+    return statusSnapshot();
+  } catch (error) {
+    appendLog(`workspace open failed: ${error.message}`);
+    dialog.showErrorBox("Could not open Canvas Workspace", error.message);
+    return statusSnapshot();
+  }
+}
+
+async function chooseCanvasWorkspace() {
+  const current = loadRuntimeConfig().workspaceDir;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose Canvas Workspace folder",
+    defaultPath: current,
+    properties: ["openDirectory", "createDirectory", "promptToCreate"],
+  });
+  if (result.canceled || !result.filePaths[0]) return statusSnapshot();
+  const workspaceDir = result.filePaths[0];
+  const shouldRestart = Boolean(serverProcess);
+  if (!shouldRestart && await health()) {
+    dialog.showMessageBoxSync(mainWindow, {
+      type: "info",
+      title: APP_NAME,
+      message: "Stop the externally started Canvas Vault server before switching workspace folders.",
+    });
+    return statusSnapshot();
+  }
+  fs.mkdirSync(workspaceDir, { recursive: true });
+  saveRuntimeConfig({ workspaceDir });
+  if (shouldRestart) {
+    await stopManagedRuntime({ stopDatabase: true, loadLanding: false });
+    return startVault();
+  }
   await loadControl();
   return statusSnapshot();
 }
@@ -516,7 +581,7 @@ function newerVersion(candidate, current) {
 async function checkForUpdates(manual = false) {
   const config = loadRuntimeConfig();
   if (!config.updateFeed) {
-    if (manual) dialog.showMessageBoxSync(mainWindow, { type: "info", title: APP_NAME, message: `Osiris Vault ${app.getVersion()} is installed.`, detail: "No team update feed is configured yet. Signed release ZIP files can still replace the application without replacing your vault folder." });
+    if (manual) dialog.showMessageBoxSync(mainWindow, { type: "info", title: APP_NAME, message: `Canvas Vault ${app.getVersion()} is installed.`, detail: "No update feed is configured yet. Signed releases can replace the application without replacing your library, workspace, or private data." });
     return null;
   }
   try {
@@ -525,11 +590,11 @@ async function checkForUpdates(manual = false) {
     const release = await response.json();
     saveRuntimeConfig({ lastUpdateCheck: new Date().toISOString() });
     if (!newerVersion(release.version, app.getVersion())) {
-      if (manual) dialog.showMessageBoxSync(mainWindow, { type: "info", title: APP_NAME, message: "Osiris Vault is up to date.", detail: `Installed version: ${app.getVersion()}` });
+      if (manual) dialog.showMessageBoxSync(mainWindow, { type: "info", title: APP_NAME, message: "Canvas Vault is up to date.", detail: `Installed version: ${app.getVersion()}` });
       return release;
     }
-    if (Notification.isSupported()) new Notification({ title: "Osiris Vault update available", body: `Version ${release.version} is ready.` }).show();
-    const choice = dialog.showMessageBoxSync(mainWindow, { type: "info", buttons: release.url ? ["Open download", "Later"] : ["OK"], defaultId: 0, cancelId: release.url ? 1 : 0, title: APP_NAME, message: `Osiris Vault ${release.version} is available.`, detail: release.notes || "The update replaces only the application. Your external vault remains untouched." });
+    if (Notification.isSupported()) new Notification({ title: "Canvas Vault update available", body: `Version ${release.version} is ready.` }).show();
+    const choice = dialog.showMessageBoxSync(mainWindow, { type: "info", buttons: release.url ? ["Open download", "Later"] : ["OK"], defaultId: 0, cancelId: release.url ? 1 : 0, title: APP_NAME, message: `Canvas Vault ${release.version} is available.`, detail: release.notes || "The update replaces only the application. Your library, workspace, and private data remain untouched." });
     if (choice === 0 && release.url) shell.openExternal(release.url);
     return release;
   } catch (error) {
@@ -543,23 +608,26 @@ function remindIfBackupOverdue() {
   try {
     const backupDir = path.join(loadRuntimeConfig().dataDir, "backups");
     const latest = fs.existsSync(backupDir) ? fs.readdirSync(backupDir).filter((name) => name.endsWith(".dump")).map((name) => fs.statSync(path.join(backupDir, name)).mtimeMs).sort((a, b) => b - a)[0] : 0;
-    if ((!latest || Date.now() - latest > 7 * 86400000) && Notification.isSupported()) new Notification({ title: APP_NAME, body: "Your vault backup is over seven days old. Use Osiris Vault → Back Up Vault." }).show();
+    if ((!latest || Date.now() - latest > 7 * 86400000) && Notification.isSupported()) new Notification({ title: APP_NAME, body: "Your library backup is over seven days old. Use Canvas Vault → Back Up Library." }).show();
   } catch { /* Reminder failures never block startup. */ }
 }
 
 function installMenu() {
   const template = [
     { label: APP_NAME, submenu: [
-      { label: "Start Osiris Vault", click: () => startVault() },
-      { label: "Stop Vault", click: () => stopVault() },
+      { label: "Start Canvas Vault", click: () => startVault() },
+      { label: "Stop Canvas Vault", click: () => stopVault() },
       { type: "separator" },
-      { label: "Open Data Folder", click: () => shell.openPath(loadRuntimeConfig().dataDir) },
+      { label: "Open Canvas Workspace", click: () => openCanvasWorkspace() },
+      { label: "Choose Canvas Workspace Folder…", click: () => chooseCanvasWorkspace() },
+      { type: "separator" },
+      { label: "Open Private Data Folder", click: () => shell.openPath(loadRuntimeConfig().dataDir) },
       { label: "Open Logs", click: () => shell.openPath(LOG_DIR) },
-      { label: "Choose Vault Folder…", click: () => chooseVaultFolder() },
+      { label: "Choose Private Data Folder…", click: () => choosePrivateDataFolder() },
       { type: "separator" },
-      { label: "Back Up Vault", click: () => runVaultUtility("backup-vault.mjs", "Vault backup") },
-      { label: "Check Vault Integrity", click: () => runVaultUtility("check-vault.mjs", "Integrity check") },
-      { label: "Export Portable Vault", click: async () => { const output = await runVaultUtility("export-portable.mjs", "Portable export", { VAULT_EXPORT_WITH_FILES: "1" }, 30 * 60 * 1000); if (output) shell.showItemInFolder(output.trim().split("\n").at(-1)); } },
+      { label: "Back Up Library", click: () => runVaultUtility("backup-vault.mjs", "Library backup") },
+      { label: "Check Library Integrity", click: () => runVaultUtility("check-vault.mjs", "Integrity check") },
+      { label: "Export Portable Library", click: async () => { const output = await runVaultUtility("export-portable.mjs", "Portable export", { VAULT_EXPORT_WITH_FILES: "1" }, 30 * 60 * 1000); if (output) shell.showItemInFolder(output.trim().split("\n").at(-1)); } },
       { label: "Install Transcription Module…", click: () => installTranscriptionModule() },
       { label: "Check for Updates…", click: () => checkForUpdates(true) },
       { type: "separator" },
@@ -570,12 +638,14 @@ function installMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-ipcMain.handle("osiris-vault:get-runtime-status", () => refreshStatus());
-ipcMain.handle("osiris-vault:start", () => startVault());
-ipcMain.handle("osiris-vault:stop", () => stopVault());
-ipcMain.handle("osiris-vault:reveal-data-folder", () => shell.openPath(loadRuntimeConfig().dataDir));
-ipcMain.handle("osiris-vault:reveal-logs-folder", () => shell.openPath(LOG_DIR));
-ipcMain.handle("osiris-vault:choose-vault-folder", () => chooseVaultFolder());
+ipcMain.handle("canvas-v4:get-runtime-status", () => refreshStatus());
+ipcMain.handle("canvas-v4:start", () => startVault());
+ipcMain.handle("canvas-v4:stop", () => stopVault());
+ipcMain.handle("canvas-v4:open-workspace", () => openCanvasWorkspace());
+ipcMain.handle("canvas-v4:choose-workspace", () => chooseCanvasWorkspace());
+ipcMain.handle("canvas-v4:reveal-private-data", () => shell.openPath(loadRuntimeConfig().dataDir));
+ipcMain.handle("canvas-v4:reveal-logs-folder", () => shell.openPath(LOG_DIR));
+ipcMain.handle("canvas-v4:choose-private-data", () => choosePrivateDataFolder());
 
 app.whenReady().then(async () => {
   ensureDirectories();
@@ -586,6 +656,7 @@ app.whenReady().then(async () => {
   mainWindow = createWindow();
   await refreshStatus();
   await loadControl();
+  void startVault();
   remindIfBackupOverdue();
   checkForUpdates(false);
   setInterval(() => checkForUpdates(false), 24 * 60 * 60 * 1000).unref();
@@ -601,11 +672,11 @@ app.on("before-quit", async (event) => {
   if (serverProcess) {
     const choice = dialog.showMessageBoxSync(mainWindow, {
       type: "question",
-      buttons: ["Stop Vault and Quit", "Cancel"],
+      buttons: ["Stop Canvas Vault and Quit", "Cancel"],
       defaultId: 0,
       cancelId: 1,
       title: APP_NAME,
-      message: "Stop the local Vault and quit?",
+      message: "Stop Canvas Vault and quit?",
       detail: "The Next.js server and PostgreSQL started by this app will shut down gracefully. Your files and database remain on this Mac.",
     });
     if (choice !== 0) return;
