@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install Canvas Vault with Codex</title>
+  <meta name="description" content="Open the complete Canvas Vault installation task in Codex.">
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0e100f; color: #f4f6f3; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at top, #173c30, #0e100f 48%); }
+    main { width: min(620px, 100%); padding: 40px; border: 1px solid #345d4d; border-radius: 22px; background: rgba(20, 24, 22, .94); box-shadow: 0 28px 80px rgba(0, 0, 0, .4); }
+    .mark { width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; background: #1d513f; color: #8eebc2; font-size: 25px; }
+    h1 { margin: 23px 0 10px; font-size: clamp(29px, 6vw, 43px); line-height: 1.04; letter-spacing: -.04em; }
+    p { margin: 0; color: #aeb8b1; font-size: 15px; line-height: 1.65; }
+    .actions { margin-top: 28px; display: grid; gap: 11px; }
+    a, button { min-height: 48px; padding: 0 18px; border: 0; border-radius: 11px; display: flex; align-items: center; justify-content: center; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; text-decoration: none; }
+    a { background: #78dfb2; color: #0b2018; }
+    button { background: #282d2a; color: #eef3ef; }
+    small { min-height: 18px; margin-top: 13px; display: block; color: #728078; text-align: center; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">+</div>
+    <h1>Install Canvas Vault with Codex</h1>
+    <p>Codex will clone the open-source repository, install local dependencies, build Canvas Vault, open the desktop app, and verify the database-backed localhost runtime.</p>
+    <div class="actions">
+      <a id="open-codex" href="#">Open installer in Codex</a>
+      <button id="copy-prompt" type="button">Copy complete installation prompt</button>
+    </div>
+    <small id="status">Opening Codex…</small>
+  </main>
+  <script>
+    const prompt = `Install Canvas Vault completely and leave the application running.
+
+Repository: https://github.com/OsirisMedici/canvas-v4
+Supported system: an Apple Silicon Mac (M1 or newer)
+
+If the current Codex project is already the canvas-v4 repository, use it. Otherwise clone the repository into ~/Canvas Vault Source without overwriting unrelated or uncommitted work. Read AGENTS.md and INSTALLATION.md. Confirm macOS on Apple Silicon plus Git, Node.js, npm, and Homebrew. Run npm run setup from the repository root. Resolve safe repository or dependency setup problems, but never delete or reset existing application data.
+
+The task is complete only when /Applications/Canvas Vault.app exists and is open, http://127.0.0.1:3217/api/health returns ok: true with app: Canvas Vault and a connected database, and the reported Canvas Workspace exists. Preserve all earlier library data and runtime settings. Leave Canvas Vault running and report the application path, local address, Canvas Workspace path, and private data path.`;
+    const codexUrl = `codex://new?prompt=${encodeURIComponent(prompt)}`;
+    const openButton = document.querySelector("#open-codex");
+    const copyButton = document.querySelector("#copy-prompt");
+    const status = document.querySelector("#status");
+    openButton.href = codexUrl;
+    copyButton.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(prompt);
+      status.textContent = "Installation prompt copied. Paste it into a new Codex task.";
+      copyButton.textContent = "Copied";
+    });
+    window.setTimeout(() => { window.location.href = codexUrl; }, 150);
+    window.setTimeout(() => { status.textContent = "If Codex did not open, use either button above."; }, 1600);
+  </script>
+</body>
+</html>

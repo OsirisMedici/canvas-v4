@@ -6,6 +6,8 @@ Canvas v4 is now shipped as **Canvas Vault**: a focused, local-first content lib
 
 The repository README now includes a one-click **Open the installer in Codex** link and a complete copyable installation prompt. The new `npm run setup` command installs required local tools, installs exact JavaScript dependencies, builds and installs the desktop application, opens it, and verifies the database-backed localhost runtime.
 
+[**Install Canvas Vault with Codex**](https://osirismedici.github.io/canvas-v4/install.html)
+
 See [INSTALLATION.md](INSTALLATION.md) for the complete team installation flow.
 
 ## Product changes

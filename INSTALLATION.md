@@ -4,7 +4,7 @@ Canvas Vault is a private, local-first macOS application. The installer builds t
 
 ## Install with Codex
 
-[![Install Canvas Vault with Codex](assets/install-with-codex.svg)](codex://new?prompt=Install%20Canvas%20Vault%20from%20https%3A%2F%2Fgithub.com%2FOsirisMedici%2Fcanvas-v4.%20If%20the%20repository%20is%20not%20already%20open%2C%20clone%20it%20into%20~%2FCanvas%20Vault%20Source%20and%20work%20there.%20Read%20AGENTS.md%20and%20INSTALLATION.md%2C%20run%20the%20documented%20one-command%20setup%2C%20resolve%20safe%20dependency%20issues%2C%20verify%20%2FApplications%2FCanvas%20Vault.app%20and%20http%3A%2F%2F127.0.0.1%3A3217%2Fapi%2Fhealth%2C%20then%20leave%20the%20application%20running.%20Preserve%20all%20existing%20library%20data%20from%20earlier%20versions.)
+[![Install Canvas Vault with Codex](assets/install-with-codex.svg)](https://osirismedici.github.io/canvas-v4/install.html)
 
 The button opens a new Codex task with the installation request filled in. Review it and press **Send**. If the button does not open Codex, copy the complete prompt below and paste it into a new Codex task.
 
