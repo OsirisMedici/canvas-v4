@@ -1,6 +1,7 @@
 export type SourceType = "youtube" | "article" | "note" | "document" | "image" | "audio" | "video" | "file";
 
 export type TranscriptStatus = "not_requested" | "fetching" | "ready" | "failed" | "not_applicable";
+export type BoardKind = "source" | "thinking";
 
 export interface ContentItem {
   id: string;
@@ -35,10 +36,32 @@ export interface ContentItem {
 export interface Board {
   id: string;
   name: string;
+  kind: BoardKind;
   folder_id: string | null;
   sort_order: number;
   trashed_at: string | null;
   item_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ThinkingColumn {
+  id: string;
+  board_id: string;
+  name: string;
+  sort_order: number;
+  card_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ThinkingCard {
+  id: string;
+  board_id: string;
+  column_id: string;
+  title: string;
+  content_text: string;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }

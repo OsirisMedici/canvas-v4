@@ -35,7 +35,18 @@ ON CONFLICT (id) DO NOTHING;
 ALTER TABLE boards
   ADD COLUMN IF NOT EXISTS folder_id uuid,
   ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS trashed_at timestamptz;
+  ADD COLUMN IF NOT EXISTS trashed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'source';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'boards_kind_check'
+  ) THEN
+    ALTER TABLE boards
+      ADD CONSTRAINT boards_kind_check CHECK (kind IN ('source', 'thinking'));
+  END IF;
+END $$;
 
 DO $$
 BEGIN
@@ -162,4 +173,31 @@ CREATE INDEX IF NOT EXISTS ingest_jobs_started_idx ON ingest_jobs (started_at DE
 
 INSERT INTO vault_schema_migrations (version, name)
 VALUES (3, 'trash metadata and ingestion job history')
+ON CONFLICT (version) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS thinking_columns (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS thinking_cards (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  column_id uuid NOT NULL REFERENCES thinking_columns(id) ON DELETE CASCADE,
+  title text NOT NULL DEFAULT 'Untitled',
+  content_text text NOT NULL DEFAULT '',
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS thinking_columns_board_idx ON thinking_columns (board_id, sort_order, created_at);
+CREATE INDEX IF NOT EXISTS thinking_cards_board_idx ON thinking_cards (board_id, column_id, sort_order, created_at);
+
+INSERT INTO vault_schema_migrations (version, name)
+VALUES (4, 'thinking boards with columns and persistent document cards')
 ON CONFLICT (version) DO NOTHING;

@@ -18,6 +18,10 @@ export function getItemDir(id: string) {
   return path.join(getVaultDir(), id);
 }
 
+export function getThinkingCardDir(id: string) {
+  return path.join(getVaultDir(), "thinking-cards", id);
+}
+
 export async function ensureDataDirectories() {
   await mkdir(getVaultDir(), { recursive: true });
 }

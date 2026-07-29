@@ -6,11 +6,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen, Captions, Check, ChevronDown, ChevronLeft, ChevronRight, Database,
-  ExternalLink, File, Folder, FolderOpen, FolderPlus, Grid2X2, LoaderCircle,
+  Columns3, ExternalLink, File, Folder, FolderOpen, FolderPlus, Grid2X2, LoaderCircle,
   MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, Pencil, Plus, Rows3, RotateCcw, Search,
   Sparkles, Trash2, Undo2, X,
 } from "lucide-react";
 import type { Board, ContentItem, Folder as VaultFolder } from "@/lib/types";
+import { ThinkingBoard } from "@/components/thinking-board";
 
 type PanelMode = "detail";
 type ViewMode = "grid" | "list";
@@ -19,7 +20,7 @@ type ContextMenuState = NavigationTarget & { x: number; y: number };
 type ItemMenuState = { id: string; x: number; y: number };
 type MenuPosition = { left: number; top: number };
 type NavigationDialog =
-  | { kind: "create-board"; folderId: string | null; value: string }
+  | { kind: "create-board"; folderId: string | null; value: string; boardKind: Board["kind"] }
   | { kind: "create-folder"; parentId: string | null; value: string }
   | { kind: "rename"; target: NavigationTarget; value: string }
   | { kind: "move"; target: NavigationTarget; destinationId: string };
@@ -389,8 +390,8 @@ export function VaultApp() {
     return () => window.removeEventListener("paste", onPaste);
   }, [ingest, saveText, uploadFiles]);
 
-  async function createNewBoard(name: string, folderId: string | null = null) {
-    const response = await fetch("/api/boards", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, folderId }) });
+  async function createNewBoard(name: string, folderId: string | null = null, kind: Board["kind"] = "source") {
+    const response = await fetch("/api/boards", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, folderId, kind }) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Could not create the board.");
     if (folderId) setExpandedFolders((current) => new Set(current).add(folderId));
@@ -449,7 +450,7 @@ export function VaultApp() {
     if (dialog.kind !== "move" && !dialog.value.trim()) return;
     setDialogBusy(true);
     try {
-      if (dialog.kind === "create-board") await createNewBoard(dialog.value.trim(), dialog.folderId);
+      if (dialog.kind === "create-board") await createNewBoard(dialog.value.trim(), dialog.folderId, dialog.boardKind);
       if (dialog.kind === "create-folder") await createNewFolder(dialog.value.trim(), dialog.parentId);
       if (dialog.kind === "rename") await renameNavigation(dialog.target, dialog.value.trim());
       if (dialog.kind === "move") await moveNavigation(dialog.target, dialog.destinationId);
@@ -667,7 +668,7 @@ export function VaultApp() {
 
   function boardRow(board: Board, depth: number) {
     return <div key={board.id} className={`tree-row board-tree-row ${currentBoardId === board.id ? "active" : ""}`} style={{ "--tree-depth": depth } as React.CSSProperties} onContextMenu={(event) => openContextMenu(event, { type: "board", id: board.id })}>
-      <button className="tree-main" onClick={() => { setShowTrash(false); setCurrentBoardId(board.id); }}><Grid2X2 size={13} /><span>{board.name}</span><small>{board.item_count}</small></button>
+      <button className="tree-main" onClick={() => { setShowTrash(false); setCurrentBoardId(board.id); }}>{board.kind === "thinking" ? <Columns3 size={13} /> : <Grid2X2 size={13} />}<span>{board.name}</span><small>{board.item_count}</small></button>
       <button className="tree-more" aria-label={`Actions for ${board.name}`} onClick={(event) => openContextMenu(event, { type: "board", id: board.id })}><MoreHorizontal size={14} /></button>
     </div>;
   }
@@ -705,7 +706,7 @@ export function VaultApp() {
         <div className="sidebar-foot"><Database size={13} /><span><strong>Personal library</strong>Files stay on this Mac</span></div>
       </aside>
 
-      <main className="board-main" onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragActive(false); }} onDrop={handleDrop}>
+      <main className="board-main" onDragEnter={(event) => { if (currentBoard?.kind === "thinking") return; event.preventDefault(); setDragActive(true); }} onDragOver={(event) => { if (currentBoard?.kind !== "thinking") event.preventDefault(); }} onDragLeave={(event) => { if (currentBoard?.kind !== "thinking" && event.currentTarget === event.target) setDragActive(false); }} onDrop={(event) => { if (currentBoard?.kind !== "thinking") handleDrop(event); }}>
         {!sidebarOpen && <button className="sidebar-show-toggle" onClick={() => setSidebarOpen(true)} aria-label="Show sidebar" title="Show sidebar (⌘B)"><PanelLeftOpen size={15} /><span>Show sidebar</span></button>}
         {showTrash ? <>
           <header className="board-header trash-header"><div><p>Recoverable storage</p><h1>Trash</h1></div><button className="empty-trash-button" onClick={() => void emptyTrashNow()} disabled={!trash.folders.length && !trash.boards.length && !trash.items.length}><Trash2 size={14} />Empty Trash</button></header>
@@ -720,14 +721,20 @@ export function VaultApp() {
           </section>
         </> : <>
         <header className="board-header">
-          <div><p>Private board</p><h1>{currentBoard?.name || "My Library"}</h1></div>
-          <div className="board-actions">
+          <div><p>{currentBoard?.kind === "thinking" ? "Thinking Board" : "Private board"}</p><h1>{currentBoard?.name || "My Library"}</h1></div>
+          {currentBoard?.kind !== "thinking" && <div className="board-actions">
             <span className="paste-hint"><kbd>⌘V</kbd> paste · drop anywhere</span>
             <div className="view-switch"><button className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Grid view"><Grid2X2 size={15} /></button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="List view"><Rows3 size={15} /></button></div>
-          </div>
+          </div>}
         </header>
 
-        <section className={`board-canvas ${dragActive ? "drag-active" : ""}`}>
+        {currentBoard?.kind === "thinking" ? <ThinkingBoard
+          boardId={currentBoard.id}
+          boardName={currentBoard.name}
+          query={query}
+          onMutated={loadBoards}
+          notify={notify}
+        /> : <section className={`board-canvas ${dragActive ? "drag-active" : ""}`}>
           {dragActive && <div className="drop-layer"><Plus size={28} /><strong>Drop into {currentBoard?.name}</strong></div>}
           {busy && <div className="ingest-status"><LoaderCircle className="spin" size={14} /> Adding to board…</div>}
           {!loading && !filteredItems.length ? (
@@ -756,7 +763,7 @@ export function VaultApp() {
               })}
             </div>
           )}
-        </section>
+        </section>}
         </>}
       </main>
 
@@ -780,11 +787,12 @@ export function VaultApp() {
 
       {selectedIds.size > 0 && <div className="selection-bar"><span>{selectedIds.size} selected</span><button onClick={() => void deleteSelection()}><Trash2 size={14} /> Delete</button><button className="clear" onClick={() => setSelectedIds(new Set())}><X size={14} /></button></div>}
       {createMenu && <div className="navigation-menu create-navigation-menu" style={createMenu} onClick={(event) => event.stopPropagation()}>
-        <button onClick={() => { setCreateMenu(null); setNavigationDialog({ kind: "create-board", folderId: null, value: "" }); }}><Grid2X2 size={14} />New board</button>
+        <button onClick={() => { setCreateMenu(null); setNavigationDialog({ kind: "create-board", folderId: null, value: "", boardKind: "source" }); }}><Grid2X2 size={14} />New board</button>
+        <button onClick={() => { setCreateMenu(null); setNavigationDialog({ kind: "create-board", folderId: null, value: "", boardKind: "thinking" }); }}><Columns3 size={14} />New Thinking Board</button>
         <button onClick={() => { setCreateMenu(null); setNavigationDialog({ kind: "create-folder", parentId: null, value: "" }); }}><FolderPlus size={14} />New folder</button>
       </div>}
       {contextMenu && <div className="navigation-menu context-navigation-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(event) => event.stopPropagation()}>
-        {contextMenu.type === "folder" && <><button onClick={() => { const folderId = contextMenu.id; setContextMenu(null); setNavigationDialog({ kind: "create-board", folderId, value: "" }); }}><Grid2X2 size={14} />New board here</button><button onClick={() => { const parentId = contextMenu.id; setContextMenu(null); setNavigationDialog({ kind: "create-folder", parentId, value: "" }); }}><FolderPlus size={14} />New subfolder</button><span className="menu-separator" /></>}
+        {contextMenu.type === "folder" && <><button onClick={() => { const folderId = contextMenu.id; setContextMenu(null); setNavigationDialog({ kind: "create-board", folderId, value: "", boardKind: "source" }); }}><Grid2X2 size={14} />New board here</button><button onClick={() => { const folderId = contextMenu.id; setContextMenu(null); setNavigationDialog({ kind: "create-board", folderId, value: "", boardKind: "thinking" }); }}><Columns3 size={14} />New Thinking Board here</button><button onClick={() => { const parentId = contextMenu.id; setContextMenu(null); setNavigationDialog({ kind: "create-folder", parentId, value: "" }); }}><FolderPlus size={14} />New subfolder</button><span className="menu-separator" /></>}
         <button onClick={() => { const target = contextMenu; const value = target.type === "board" ? boards.find((board) => board.id === target.id)?.name || "" : folders.find((folder) => folder.id === target.id)?.name || ""; setContextMenu(null); setNavigationDialog({ kind: "rename", target, value }); }}><Pencil size={14} />Rename</button>
         <button onClick={() => { const target = contextMenu; const destinationId = target.type === "board" ? boards.find((board) => board.id === target.id)?.folder_id || "" : folders.find((folder) => folder.id === target.id)?.parent_id || ""; setContextMenu(null); setNavigationDialog({ kind: "move", target, destinationId }); }}><FolderOpen size={14} />Move to folder…</button>
         <span className="menu-separator" />
@@ -796,7 +804,13 @@ export function VaultApp() {
       {navigationDialog && <div className="navigation-dialog-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target && !dialogBusy) setNavigationDialog(null); }}>
         <form className="navigation-dialog" onSubmit={submitNavigationDialog}>
           <div className="navigation-dialog-heading"><div><span>Library</span><h2>{navigationDialogTitle}</h2></div><button type="button" aria-label="Close" onClick={() => setNavigationDialog(null)} disabled={dialogBusy}><X size={16} /></button></div>
-          {navigationDialog.kind === "move" ? <label><span>Destination</span><select autoFocus value={navigationDialog.destinationId} onChange={(event) => setNavigationDialog((current) => current?.kind === "move" ? { ...current, destinationId: event.target.value } : current)}><option value="">Top level</option>{folders.filter((folder) => folder.id !== navigationDialog.target.id).map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label> : <label><span>Name</span><input autoFocus maxLength={120} value={navigationDialog.value} onChange={(event) => setNavigationDialog((current) => current && current.kind !== "move" ? { ...current, value: event.target.value } : current)} placeholder={navigationDialog.kind === "create-board" ? "Board name" : navigationDialog.kind === "create-folder" ? "Folder name" : "New name"} /></label>}
+          {navigationDialog.kind === "move" ? <label><span>Destination</span><select autoFocus value={navigationDialog.destinationId} onChange={(event) => setNavigationDialog((current) => current?.kind === "move" ? { ...current, destinationId: event.target.value } : current)}><option value="">Top level</option>{folders.filter((folder) => folder.id !== navigationDialog.target.id).map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label> : <>
+            {navigationDialog.kind === "create-board" && <div className="board-kind-picker">
+              <button type="button" className={navigationDialog.boardKind === "source" ? "active" : ""} onClick={() => setNavigationDialog((current) => current?.kind === "create-board" ? { ...current, boardKind: "source" } : current)}><Grid2X2 size={17} /><span><strong>Source board</strong><small>Collect links, files, and media</small></span></button>
+              <button type="button" className={navigationDialog.boardKind === "thinking" ? "active" : ""} onClick={() => setNavigationDialog((current) => current?.kind === "create-board" ? { ...current, boardKind: "thinking" } : current)}><Columns3 size={17} /><span><strong>Thinking Board</strong><small>Columns with writing documents</small></span></button>
+            </div>}
+            <label><span>Name</span><input autoFocus maxLength={120} value={navigationDialog.value} onChange={(event) => setNavigationDialog((current) => current && current.kind !== "move" ? { ...current, value: event.target.value } : current)} placeholder={navigationDialog.kind === "create-board" ? navigationDialog.boardKind === "thinking" ? "Thinking Board name" : "Board name" : navigationDialog.kind === "create-folder" ? "Folder name" : "New name"} /></label>
+          </>}
           <div className="navigation-dialog-actions"><button type="button" onClick={() => setNavigationDialog(null)} disabled={dialogBusy}>Cancel</button><button className="primary" disabled={dialogBusy || (navigationDialog.kind !== "move" && !navigationDialog.value.trim())}>{dialogBusy ? "Saving…" : navigationDialogAction}</button></div>
         </form>
       </div>}
